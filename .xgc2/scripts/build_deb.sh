@@ -6,12 +6,12 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 
 package_name="libxgc2-observer-dev"
-version="${PACKAGE_VERSION:-0.3.0-1}"
+version="${PACKAGE_VERSION:-0.3.1-1}"
 build_dir="${XGC2_OBSERVER_BUILD_DIR:-${repo_root}/.ci/build}"
 stage_dir="${XGC2_OBSERVER_STAGE_DIR:-${repo_root}/.ci/stage}"
 output_dir="${XGC2_OBSERVER_DEB_OUTPUT_DIR:-${repo_root}/.ci/debs}"
 pkg_root="${repo_root}/.ci/pkg/${package_name}"
-arch="$(dpkg --print-architecture)"
+arch="all"
 
 rm -rf "${build_dir}" "${stage_dir}" "${output_dir}" "${pkg_root}"
 mkdir -p "${output_dir}"
@@ -35,7 +35,6 @@ Section: libdevel
 Priority: optional
 Architecture: ${arch}
 Maintainer: XGC2 <apt@example.com>
-Depends: libc6, libgcc-s1, libstdc++6
 Conflicts: ros-noetic-xgc2-observer
 Replaces: ros-noetic-xgc2-observer
 Description: XGC2 C++ observer and timing-tolerant signal utilities

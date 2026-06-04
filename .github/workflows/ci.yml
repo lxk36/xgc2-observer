@@ -57,41 +57,7 @@ jobs:
 
   deb-build-and-smoke:
     needs: package-compliance
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-latest
-            platform: linux/amd64
-            image: ubuntu:20.04
-            distribution: focal
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-            platform: linux/arm64
-            image: ubuntu:20.04
-            distribution: focal
-          - arch: amd64
-            runner: ubuntu-latest
-            platform: linux/amd64
-            image: ubuntu:22.04
-            distribution: jammy
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-            platform: linux/arm64
-            image: ubuntu:22.04
-            distribution: jammy
-          - arch: amd64
-            runner: ubuntu-latest
-            platform: linux/amd64
-            image: ubuntu:24.04
-            distribution: noble
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-            platform: linux/arm64
-            image: ubuntu:24.04
-            distribution: noble
+    runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
@@ -103,11 +69,9 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm \
-            --platform "${{ matrix.platform }}" \
-            -e PACKAGE_VERSION="0.3.0-1+${{ matrix.distribution }}" \
             -v "${GITHUB_WORKSPACE}:/work" \
             -w /work \
-            "${{ matrix.image }}" \
+            ubuntu:20.04 \
             bash -lc '
               set -euo pipefail
               export DEBIAN_FRONTEND=noninteractive
@@ -130,10 +94,10 @@ jobs:
       - name: Upload deb artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: libxgc2-observer-dev-${{ matrix.distribution }}-${{ matrix.arch }}
+          name: libxgc2-observer-dev-all
           path: .ci/debs/*.deb
 
-      - name: Publish to self-hosted APT repository
+      - name: Publish focal APT package
         if: github.event_name != 'pull_request'
         env:
           APT_REPO_HOST: ${{ secrets.APT_REPO_HOST }}
@@ -141,5 +105,27 @@ jobs:
           APT_REPO_USER: ${{ secrets.APT_REPO_USER }}
           APT_REPO_SSH_KEY: ${{ secrets.APT_REPO_SSH_KEY }}
           APT_REPO_KNOWN_HOSTS: ${{ secrets.APT_REPO_KNOWN_HOSTS }}
-          APT_REPO_DISTRIBUTION: ${{ matrix.distribution }}
+          APT_REPO_DISTRIBUTION: focal
+        run: ./.xgc2/scripts/publish_self_hosted_apt.sh --deb-dir .ci/debs
+
+      - name: Publish jammy APT package
+        if: github.event_name != 'pull_request'
+        env:
+          APT_REPO_HOST: ${{ secrets.APT_REPO_HOST }}
+          APT_REPO_PORT: ${{ secrets.APT_REPO_PORT }}
+          APT_REPO_USER: ${{ secrets.APT_REPO_USER }}
+          APT_REPO_SSH_KEY: ${{ secrets.APT_REPO_SSH_KEY }}
+          APT_REPO_KNOWN_HOSTS: ${{ secrets.APT_REPO_KNOWN_HOSTS }}
+          APT_REPO_DISTRIBUTION: jammy
+        run: ./.xgc2/scripts/publish_self_hosted_apt.sh --deb-dir .ci/debs
+
+      - name: Publish noble APT package
+        if: github.event_name != 'pull_request'
+        env:
+          APT_REPO_HOST: ${{ secrets.APT_REPO_HOST }}
+          APT_REPO_PORT: ${{ secrets.APT_REPO_PORT }}
+          APT_REPO_USER: ${{ secrets.APT_REPO_USER }}
+          APT_REPO_SSH_KEY: ${{ secrets.APT_REPO_SSH_KEY }}
+          APT_REPO_KNOWN_HOSTS: ${{ secrets.APT_REPO_KNOWN_HOSTS }}
+          APT_REPO_DISTRIBUTION: noble
         run: ./.xgc2/scripts/publish_self_hosted_apt.sh --deb-dir .ci/debs
