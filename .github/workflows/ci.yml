@@ -77,6 +77,7 @@ jobs:
           set -euo pipefail
           docker run --rm \
             --platform "${{ matrix.platform }}" \
+            -e PACKAGE_VERSION="0.3.0-1+${{ matrix.distribution }}" \
             -v "${GITHUB_WORKSPACE}:/work" \
             -w /work \
             "${{ matrix.image }}" \
