@@ -6,7 +6,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 
 package_name="libxgc2-observer-dev"
-version="${PACKAGE_VERSION:-0.1.0-1}"
+version="${PACKAGE_VERSION:-0.2.0-1}"
 build_dir="${XGC2_OBSERVER_BUILD_DIR:-${repo_root}/.ci/build}"
 stage_dir="${XGC2_OBSERVER_STAGE_DIR:-${repo_root}/.ci/stage}"
 output_dir="${XGC2_OBSERVER_DEB_OUTPUT_DIR:-${repo_root}/.ci/debs}"
@@ -46,9 +46,15 @@ EOF
 cp -a "${repo_root}/README.md" "${pkg_root}/usr/share/doc/${package_name}/"
 
 test -f "${pkg_root}/usr/include/xgc2_observer/observer.hpp"
+test -f "${pkg_root}/usr/include/xgc2_observer/angle.hpp"
+test -f "${pkg_root}/usr/include/xgc2_observer/angle_differentiator.hpp"
+test -f "${pkg_root}/usr/include/xgc2_observer/array_observer.hpp"
 test -f "${pkg_root}/usr/include/xgc2_observer/butterworth_filter.hpp"
 test -f "${pkg_root}/usr/include/xgc2_observer/differentiator.hpp"
+test -f "${pkg_root}/usr/include/xgc2_observer/exponential_filter.hpp"
 test -f "${pkg_root}/usr/include/xgc2_observer/luenberger_observer.hpp"
+test -f "${pkg_root}/usr/include/xgc2_observer/status.hpp"
+test -f "${pkg_root}/usr/include/xgc2_observer/time_delta.hpp"
 test -f "${pkg_root}/usr/lib/cmake/xgc2_observer/xgc2_observerConfig.cmake"
 
 find "${pkg_root}" -type d -exec chmod 0755 {} +

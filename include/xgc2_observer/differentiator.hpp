@@ -1,20 +1,14 @@
 #ifndef XGC2_OBSERVER_DIFFERENTIATOR_HPP
 #define XGC2_OBSERVER_DIFFERENTIATOR_HPP
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
 #include "xgc2_observer/butterworth_filter.hpp"
+#include "xgc2_observer/status.hpp"
 
 namespace xgc2_observer {
-
-enum class SampleStatus {
-    kInitialized,
-    kAccepted,
-    kHeldInvalidInput,
-    kHeldInvalidDt,
-    kHeldOutlier,
-};
 
 struct DifferentiatorOptions {
     double min_dt_s{1.0e-4};
@@ -24,6 +18,36 @@ struct DifferentiatorOptions {
     double derivative_cutoff_hz{0.0};
     bool reset_on_large_dt{false};
 };
+
+inline bool isValid(const DifferentiatorOptions& options)
+{
+    return std::isfinite(options.min_dt_s) && options.min_dt_s > 0.0 &&
+           std::isfinite(options.max_dt_s) && options.max_dt_s >= options.min_dt_s &&
+           (!std::isfinite(options.max_input_step) || options.max_input_step >= 0.0) &&
+           (!std::isfinite(options.max_derivative) || options.max_derivative >= 0.0) &&
+           std::isfinite(options.derivative_cutoff_hz) && options.derivative_cutoff_hz >= 0.0;
+}
+
+inline DifferentiatorOptions normalized(DifferentiatorOptions options)
+{
+    const DifferentiatorOptions defaults;
+    if (!std::isfinite(options.min_dt_s) || options.min_dt_s <= 0.0) {
+        options.min_dt_s = defaults.min_dt_s;
+    }
+    if (!std::isfinite(options.max_dt_s) || options.max_dt_s < options.min_dt_s) {
+        options.max_dt_s = std::max(defaults.max_dt_s, options.min_dt_s);
+    }
+    if (std::isfinite(options.max_input_step) && options.max_input_step < 0.0) {
+        options.max_input_step = defaults.max_input_step;
+    }
+    if (std::isfinite(options.max_derivative) && options.max_derivative < 0.0) {
+        options.max_derivative = defaults.max_derivative;
+    }
+    if (!std::isfinite(options.derivative_cutoff_hz) || options.derivative_cutoff_hz < 0.0) {
+        options.derivative_cutoff_hz = defaults.derivative_cutoff_hz;
+    }
+    return options;
+}
 
 struct DifferentiatorSample {
     double value{0.0};
@@ -37,13 +61,13 @@ public:
     Differentiator() = default;
 
     explicit Differentiator(DifferentiatorOptions options)
-        : options_(options)
+        : options_(normalized(options))
     {
     }
 
     void setOptions(DifferentiatorOptions options)
     {
-        options_ = options;
+        options_ = normalized(options);
         derivative_filter_.reset(options_.derivative_cutoff_hz, derivative_);
     }
 

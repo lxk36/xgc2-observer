@@ -5,13 +5,17 @@ robotics runtime code.  The package is ROS-independent so ROS1, ROS2, Gazebo,
 PX4/MAVROS integration code, controllers, MATLAB bindings, and non-ROS CMake
 projects can use the same installed headers.
 
-The initial scope is deliberately narrow:
+The scope is deliberately narrow:
 
+- status helpers for logging and diagnostics;
+- timestamp-to-`dt` guarding for runtime data streams;
 - low-pass filtering for weak timing jitter and noisy scalar signals;
 - numerical differentiation that rejects invalid samples, bad `dt`, and large
   jumps before updating state;
-- a position/velocity Luenberger-style observer for motion-capture and target
-  tracking signals.
+- angle wrapping and shortest angular distance utilities for yaw-like signals;
+- position/velocity Luenberger-style observers for motion-capture and target
+  tracking signals;
+- lightweight `std::array` wrappers for fixed-size multi-axis use.
 
 ## Install
 
@@ -54,6 +58,38 @@ or individual headers:
 
 ## Algorithms
 
+### `SampleStatus`
+
+Observer updates return a `SampleStatus` so callers can publish diagnostics
+without duplicating status mapping code.
+
+```cpp
+const auto sample = diff.update(position, dt_s);
+ROS_DEBUG_STREAM("observer status=" << xgc2_observer::toString(sample.status));
+
+if (xgc2_observer::measurementHeld(sample.status)) {
+  // Keep the previous controller input or report degraded sensor quality.
+}
+```
+
+### `TimeDeltaGuard`
+
+`TimeDeltaGuard` converts monotonically increasing timestamps into checked
+sampling intervals.  It rejects invalid timestamps, time jumps backwards, too
+small intervals, and too large intervals before caller state is updated.
+
+```cpp
+xgc2_observer::TimeDeltaGuardOptions options;
+options.min_dt_s = 0.001;
+options.max_dt_s = 0.1;
+
+xgc2_observer::TimeDeltaGuard dt_guard(options);
+const auto dt = dt_guard.update(stamp.toSec());
+if (dt.accepted && dt.status == xgc2_observer::SampleStatus::kAccepted) {
+  diff.update(position, dt.dt_s);
+}
+```
+
 ### `SecondOrderButterworthLowPass`
 
 Second-order Butterworth low-pass filter with coefficients recomputed from the
@@ -68,6 +104,16 @@ const double filtered = filter.filter(raw_value, dt_s);
 Invalid input holds the last output.  Invalid `dt` or non-positive cutoff resets
 the filter state to the current input because filtering semantics are not
 defined in that case.
+
+### `ExponentialLowPass`
+
+First-order exponential low-pass filter for simple command smoothing or noisy
+signals where a second-order filter is unnecessary.
+
+```cpp
+xgc2_observer::ExponentialLowPass filter(2.0, 0.0);
+const double filtered = filter.filter(raw_value, dt_s);
+```
 
 ### `Differentiator`
 
@@ -88,6 +134,29 @@ The returned sample reports whether the measurement was accepted or held because
 of invalid input, invalid `dt`, or an outlier.  State is updated only for
 accepted samples.
 
+Options are normalized on construction and in `setOptions()`.  Invalid `dt`
+limits, negative cutoff values, and negative bounds are replaced with conservative
+defaults instead of letting invalid configuration propagate into runtime math.
+
+### Angle Utilities
+
+Yaw and heading signals must be treated on the unit circle.  Use the angle
+helpers before computing residuals manually.
+
+```cpp
+const double yaw = xgc2_observer::normalizeAngle(raw_yaw);
+const double error = xgc2_observer::shortestAngularDistance(current_yaw, target_yaw);
+```
+
+`AngleDifferentiator` uses the same options as `Differentiator`, but computes
+the derivative from shortest angular distance, so crossing `pi` does not create
+a false derivative spike.
+
+```cpp
+xgc2_observer::AngleDifferentiator yaw_rate(options);
+const auto sample = yaw_rate.update(yaw_rad, dt_s);
+```
+
 ### `PositionVelocityLuenbergerObserver`
 
 One-dimensional position/velocity observer for target tracking and motion-capture
@@ -104,8 +173,23 @@ xgc2_observer::PositionVelocityLuenbergerObserver observer(options);
 const auto estimate = observer.update(measured_position, dt_s);
 ```
 
-This is intended for scalar axes.  Multi-axis users should instantiate one
-observer per axis or wrap it in a domain-specific vector type.
+`AngularPositionVelocityLuenbergerObserver` has the same interface, but applies
+angle wrapping to the predicted angle and shortest-distance residual.  Use it
+for yaw or other continuous revolute coordinates.
+
+### Fixed-Size Array Wrappers
+
+Scalar observers remain the core API.  For fixed-size vectors, use the
+`std::array` wrappers to avoid duplicating per-axis loops in every caller.
+
+```cpp
+xgc2_observer::ArrayDifferentiator<3> velocity_from_position;
+std::array<double, 3> position{{x, y, z}};
+const auto samples = velocity_from_position.update(position, dt_s);
+
+xgc2_observer::ArrayPositionVelocityLuenbergerObserver<3> mocap_observer;
+const auto estimates = mocap_observer.update(position, dt_s);
+```
 
 ## Design Boundary
 

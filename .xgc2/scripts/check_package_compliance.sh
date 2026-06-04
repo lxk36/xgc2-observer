@@ -31,9 +31,15 @@ required_files=(
   CMakeLists.txt
   cmake/xgc2_observerConfig.cmake.in
   include/xgc2_observer/observer.hpp
+  include/xgc2_observer/angle.hpp
+  include/xgc2_observer/angle_differentiator.hpp
+  include/xgc2_observer/array_observer.hpp
   include/xgc2_observer/butterworth_filter.hpp
   include/xgc2_observer/differentiator.hpp
+  include/xgc2_observer/exponential_filter.hpp
   include/xgc2_observer/luenberger_observer.hpp
+  include/xgc2_observer/status.hpp
+  include/xgc2_observer/time_delta.hpp
   test/observer_header_test.cpp
   .github/workflows/ci.yml
   .xgc2/product.yml
