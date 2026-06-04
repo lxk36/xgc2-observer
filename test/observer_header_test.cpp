@@ -194,6 +194,36 @@ void testArrayWrappers()
     assert(estimates[1].status == xgc2_observer::SampleStatus::kAccepted);
 }
 
+void testScalarRecursiveLeastSquares()
+{
+    xgc2_observer::ScalarRecursiveLeastSquaresOptions bad_options;
+    bad_options.forgetting_factor = 2.0;
+    bad_options.initial_covariance = std::numeric_limits<double>::infinity();
+    bad_options.min_abs_regressor = -1.0;
+    const auto options = xgc2_observer::normalized(bad_options);
+    assert(xgc2_observer::isValid(options));
+
+    xgc2_observer::ScalarRecursiveLeastSquares estimator(options);
+    auto sample = estimator.update(4.0, 2.0);
+    assert(sample.status == xgc2_observer::SampleStatus::kHeldInvalidInput);
+
+    estimator.reset(1.0, 10.0);
+    sample = estimator.update(6.0, 2.0);
+    assert(sample.status == xgc2_observer::SampleStatus::kAccepted);
+    assert(sample.measurement_accepted);
+    assert(sample.parameter > 2.0);
+    assert(sample.parameter < 3.0);
+    assert(sample.covariance > 0.0);
+
+    const double held_parameter = sample.parameter;
+    sample = estimator.update(std::numeric_limits<double>::quiet_NaN(), 2.0);
+    assert(sample.status == xgc2_observer::SampleStatus::kHeldInvalidInput);
+    assert(std::fabs(sample.parameter - held_parameter) < 1.0e-12);
+
+    sample = estimator.update(6.0, 0.0);
+    assert(sample.status == xgc2_observer::SampleStatus::kHeldInvalidInput);
+}
+
 }  // namespace
 
 int main()
@@ -208,5 +238,6 @@ int main()
     testPositionVelocityObserver();
     testAngularPositionVelocityObserver();
     testArrayWrappers();
+    testScalarRecursiveLeastSquares();
     return 0;
 }

@@ -38,6 +38,7 @@ required_files=(
   include/xgc2_observer/differentiator.hpp
   include/xgc2_observer/exponential_filter.hpp
   include/xgc2_observer/luenberger_observer.hpp
+  include/xgc2_observer/recursive_least_squares.hpp
   include/xgc2_observer/status.hpp
   include/xgc2_observer/time_delta.hpp
   test/observer_header_test.cpp

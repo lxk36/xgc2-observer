@@ -15,6 +15,7 @@ The scope is deliberately narrow:
 - angle wrapping and shortest angular distance utilities for yaw-like signals;
 - position/velocity Luenberger-style observers for motion-capture and target
   tracking signals;
+- scalar recursive least-squares estimation for one-parameter online models;
 - lightweight `std::array` wrappers for fixed-size multi-axis use.
 
 ## Install
@@ -176,6 +177,41 @@ const auto estimate = observer.update(measured_position, dt_s);
 `AngularPositionVelocityLuenbergerObserver` has the same interface, but applies
 angle wrapping to the predicted angle and shortest-distance residual.  Use it
 for yaw or other continuous revolute coordinates.
+
+### `ScalarRecursiveLeastSquares`
+
+One-dimensional recursive least-squares estimator for online models of the
+form:
+
+```text
+y = phi * theta
+```
+
+where `theta` is the scalar parameter being estimated.  The estimator owns the
+parameter, covariance, forgetting factor, and basic numeric guards.  Domain
+packages should still own their physical interpretation, unit conversions, and
+operational gating.
+
+```cpp
+xgc2_observer::ScalarRecursiveLeastSquaresOptions options;
+options.forgetting_factor = 0.998;
+options.initial_covariance = 100.0;
+
+xgc2_observer::ScalarRecursiveLeastSquares rls(options);
+rls.reset(initial_parameter);
+
+const auto sample = rls.update(measurement, regressor);
+if (sample.measurement_accepted) {
+  const double theta = sample.parameter;
+}
+```
+
+For hover-thrust estimation, a caller can map `theta` to thrust-to-acceleration:
+
+```text
+acc_z = normalized_thrust * thrust_to_acceleration
+hover_thrust = gravity / thrust_to_acceleration
+```
 
 ### Fixed-Size Array Wrappers
 
