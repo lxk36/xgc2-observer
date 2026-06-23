@@ -9,6 +9,7 @@
 #include "xgc2_observer/exponential_filter.hpp"
 #include "xgc2_observer/luenberger_observer.hpp"
 #include "xgc2_observer/recursive_least_squares.hpp"
+#include "xgc2_observer/slew_rate_limiter.hpp"
 #include "xgc2_observer/status.hpp"
 #include "xgc2_observer/time_delta.hpp"
 

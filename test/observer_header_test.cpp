@@ -40,6 +40,18 @@ void testExponentialLowPass() {
     expect(held == filter.value());
 }
 
+void testSlewRateLimiter() {
+    xgc2_observer::SlewRateLimiter limiter(0.5, 0.0);
+
+    expect(std::fabs(limiter.filter(10.0, 0.2) - 0.1) < 1.0e-12);
+    expect(std::fabs(limiter.filter(-10.0, 0.2) - 0.0) < 1.0e-12);
+    const double held = limiter.filter(std::numeric_limits<double>::quiet_NaN(), 0.2);
+    expect(held == limiter.value());
+
+    limiter.setMaxRatePerSecond(0.0);
+    expect(std::fabs(limiter.filter(2.0, 0.2) - 2.0) < 1.0e-12);
+}
+
 void testStatusHelpers() {
     expect(xgc2_observer::measurementAccepted(xgc2_observer::SampleStatus::kAccepted));
     expect(xgc2_observer::measurementHeld(xgc2_observer::SampleStatus::kHeldOutlier));
@@ -215,6 +227,10 @@ void testScalarRecursiveLeastSquares() {
 
     sample = estimator.update(6.0, 0.0);
     expect(sample.status == xgc2_observer::SampleStatus::kHeldInvalidInput);
+
+    sample = estimator.update(6.0, std::numeric_limits<double>::quiet_NaN());
+    expect(sample.status == xgc2_observer::SampleStatus::kHeldInvalidInput);
+    expect(!sample.measurement_accepted);
 }
 
 } // namespace
@@ -222,6 +238,7 @@ void testScalarRecursiveLeastSquares() {
 int main() {
     testButterworth();
     testExponentialLowPass();
+    testSlewRateLimiter();
     testStatusHelpers();
     testTimeDeltaGuard();
     testOptionNormalization();
