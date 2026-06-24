@@ -1,10 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
-project(xgc2_observer VERSION 0.3.2 LANGUAGES CXX)
+project(xgc2_observer VERSION 0.3.3 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 option(XGC2_OBSERVER_BUILD_TESTING "Build xgc2_observer tests" ON)
+
+find_package(Eigen3 REQUIRED)
 
 add_library(xgc2_observer INTERFACE)
 add_library(xgc2_observer::observer ALIAS xgc2_observer)
@@ -19,6 +21,10 @@ target_include_directories(xgc2_observer
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+target_link_libraries(xgc2_observer
+  INTERFACE
+    Eigen3::Eigen
+)
 
 install(TARGETS xgc2_observer
   EXPORT xgc2_observerTargets
@@ -30,6 +36,10 @@ install(DIRECTORY include/
 
 install(FILES README.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/libxgc2-observer-dev
+)
+
+install(DIRECTORY matlab/
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/libxgc2-observer-dev/matlab
 )
 
 configure_package_config_file(

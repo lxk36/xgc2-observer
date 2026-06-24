@@ -233,6 +233,148 @@ void testScalarRecursiveLeastSquares() {
     expect(!sample.measurement_accepted);
 }
 
+struct InertialPoseTestSamples {
+    static xgc2_observer::InertialSample inertial(double stamp_sec,
+                                                  const Eigen::Vector3d& gyro = Eigen::Vector3d::Zero(),
+                                                  const Eigen::Vector3d& accel = Eigen::Vector3d(0.0, 0.0, 9.8066)) {
+        xgc2_observer::InertialSample sample;
+        sample.received = true;
+        sample.valid = true;
+        sample.stamp_sec = stamp_sec;
+        sample.angular_velocity = gyro;
+        sample.linear_acceleration = accel;
+        return sample;
+    }
+
+    static xgc2_observer::PoseMeasurement pose(double stamp_sec, const Eigen::Vector3d& position,
+                                               const Eigen::Quaterniond& orientation = Eigen::Quaterniond::Identity()) {
+        xgc2_observer::PoseMeasurement sample;
+        sample.received = true;
+        sample.valid = true;
+        sample.stamp_sec = stamp_sec;
+        sample.pose.position = position;
+        sample.pose.orientation = xgc2_observer::normalizedQuaternion(orientation);
+        return sample;
+    }
+};
+
+void testSe3Utilities() {
+    const Eigen::Quaterniond q = xgc2_observer::normalizedQuaternion(Eigen::Quaterniond(-2.0, 0.1, -0.2, 0.3));
+    expect(std::fabs(q.norm() - 1.0) < 1.0e-12);
+    expect(q.w() >= 0.0);
+
+    const Eigen::Quaterniond invalid = xgc2_observer::normalizedQuaternion(
+        Eigen::Quaterniond(std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0, 0.0));
+    expect(std::fabs(invalid.w() - 1.0) < 1.0e-12);
+    expect(invalid.vec().norm() < 1.0e-12);
+
+    xgc2_observer::Pose3 transform;
+    transform.position = Eigen::Vector3d(1.0, 2.0, 3.0);
+    transform.orientation = xgc2_observer::rpyToQuaternion(Eigen::Vector3d(0.1, -0.2, 0.3));
+    const xgc2_observer::Pose3 identity = xgc2_observer::compose(transform, xgc2_observer::inverse(transform));
+    expect(identity.position.norm() < 1.0e-12);
+    expect(std::fabs(identity.orientation.w() - 1.0) < 1.0e-12);
+}
+
+void testInertialPoseEskfInitialization() {
+    xgc2_observer::InertialPoseEskfConfig config;
+    config.measurement_frame_to_world.position = Eigen::Vector3d(1.0, 2.0, 3.0);
+    config.body_to_marker.position = Eigen::Vector3d(0.1, 0.0, 0.0);
+
+    xgc2_observer::InertialPoseEskf eskf;
+    eskf.setConfig(config);
+
+    const auto imu = InertialPoseTestSamples::inertial(1.0);
+    const auto pose = InertialPoseTestSamples::pose(1.0, Eigen::Vector3d(2.0, 0.0, 1.0));
+    eskf.initializeFromPose(pose, &imu);
+
+    expect(eskf.initialized());
+    expect(std::fabs(eskf.state().position.x() - 2.9) < 1.0e-12);
+    expect(std::fabs(eskf.state().position.y() - 2.0) < 1.0e-12);
+    expect(std::fabs(eskf.state().position.z() - 4.0) < 1.0e-12);
+    expect(eskf.hasCorrectedBodyPose());
+    expect(std::fabs(eskf.correctedBodyPose().position.x() - 2.9) < 1.0e-12);
+}
+
+void testInertialPoseEskfStationaryPropagation() {
+    xgc2_observer::InertialPoseEskf eskf;
+    const auto imu0 = InertialPoseTestSamples::inertial(1.0, Eigen::Vector3d(0.1, 0.0, 0.0));
+    eskf.initializeFromPose(InertialPoseTestSamples::pose(1.0, Eigen::Vector3d::Zero()), &imu0);
+
+    const auto imu1 = InertialPoseTestSamples::inertial(1.01, Eigen::Vector3d(0.1, 0.0, 0.0));
+    eskf.propagateInertial(imu1);
+
+    expect(std::fabs(eskf.state().angular_velocity.x() - 0.1) < 1.0e-12);
+    expect(eskf.state().velocity.norm() < 1.0e-3);
+    expect(std::fabs(eskf.state().orientation.norm() - 1.0) < 1.0e-12);
+    expect(eskf.state().orientation.w() >= 0.0);
+}
+
+void testInertialPoseEskfPoseUpdateAndReject() {
+    xgc2_observer::InertialPoseEskfConfig config;
+    config.innovation_position_gate_m = 0.5;
+
+    xgc2_observer::InertialPoseEskf eskf;
+    eskf.setConfig(config);
+    const auto imu0 = InertialPoseTestSamples::inertial(1.0);
+    eskf.initializeFromPose(InertialPoseTestSamples::pose(1.0, Eigen::Vector3d::Zero()), &imu0);
+
+    auto result = eskf.updatePose(InertialPoseTestSamples::pose(1.02, Eigen::Vector3d(0.4, 0.0, 0.0)));
+    expect(result.accepted);
+    expect(eskf.state().position.x() > 0.3);
+    expect(eskf.state().position.x() < 0.4);
+
+    const double held_position = eskf.state().position.x();
+    result = eskf.updatePose(InertialPoseTestSamples::pose(1.04, Eigen::Vector3d(2.0, 0.0, 0.0)));
+    expect(!result.accepted);
+    expect(result.innovation_rejected);
+    expect(std::fabs(eskf.state().position.x() - held_position) < 1.0e-12);
+}
+
+void testInertialPoseEskfInvalidAndLargeDtHoldState() {
+    xgc2_observer::InertialPoseEskf eskf;
+    const auto imu0 = InertialPoseTestSamples::inertial(1.0);
+    eskf.initializeFromPose(InertialPoseTestSamples::pose(1.0, Eigen::Vector3d::Zero()), &imu0);
+
+    xgc2_observer::InertialSample invalid_imu = InertialPoseTestSamples::inertial(1.01);
+    invalid_imu.angular_velocity.x() = std::numeric_limits<double>::quiet_NaN();
+    eskf.propagateInertial(invalid_imu);
+    expect(std::fabs(eskf.state().last_inertial_stamp_sec - 1.0) < 1.0e-12);
+
+    eskf.propagateInertial(InertialPoseTestSamples::inertial(2.0));
+    expect(std::fabs(eskf.state().last_inertial_stamp_sec - 2.0) < 1.0e-12);
+    expect(eskf.state().position.norm() < 1.0e-12);
+
+    xgc2_observer::PoseMeasurement invalid_pose = InertialPoseTestSamples::pose(2.01, Eigen::Vector3d::Zero());
+    invalid_pose.pose.position.z() = std::numeric_limits<double>::quiet_NaN();
+    const auto result = eskf.updatePose(invalid_pose);
+    expect(!result.accepted);
+    expect(!result.innovation_rejected);
+    expect(eskf.state().position.norm() < 1.0e-12);
+}
+
+void testInertialPoseEskfGyroBiasAndCorrectedPose() {
+    xgc2_observer::InertialPoseEskfConfig config;
+    config.position_update_gain = 0.0;
+    config.velocity_update_gain = 0.0;
+    config.orientation_update_gain = 0.5;
+    config.gyro_bias_update_gain = 0.01;
+
+    xgc2_observer::InertialPoseEskf eskf;
+    eskf.setConfig(config);
+    const auto imu0 = InertialPoseTestSamples::inertial(1.0);
+    eskf.initializeFromPose(InertialPoseTestSamples::pose(1.0, Eigen::Vector3d::Zero()), &imu0);
+
+    const auto yaw_pose = InertialPoseTestSamples::pose(1.1, Eigen::Vector3d(0.2, 0.0, 0.0),
+                                                        xgc2_observer::rpyToQuaternion(Eigen::Vector3d(0.0, 0.0, 0.1)));
+    const auto result = eskf.updatePose(yaw_pose);
+    expect(result.accepted);
+    expect(std::fabs(eskf.correctedBodyPose().position.x() - 0.2) < 1.0e-12);
+    expect(std::fabs(eskf.state().position.x()) < 1.0e-12);
+    expect(eskf.state().gyro_bias.z() < 0.0);
+    expect(eskf.state().orientation.w() >= 0.0);
+}
+
 } // namespace
 
 int main() {
@@ -248,5 +390,11 @@ int main() {
     testAngularPositionVelocityObserver();
     testArrayWrappers();
     testScalarRecursiveLeastSquares();
+    testSe3Utilities();
+    testInertialPoseEskfInitialization();
+    testInertialPoseEskfStationaryPropagation();
+    testInertialPoseEskfPoseUpdateAndReject();
+    testInertialPoseEskfInvalidAndLargeDtHoldState();
+    testInertialPoseEskfGyroBiasAndCorrectedPose();
     return 0;
 }

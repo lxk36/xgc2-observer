@@ -11,6 +11,7 @@ apt:
   packages:
     - libxgc2-observer-dev
   depends:
+    - libeigen3-dev
     - libc6
     - libgcc-s1
     - libstdc++6

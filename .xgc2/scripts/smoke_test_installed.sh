@@ -36,6 +36,7 @@ int main()
   xgc2_observer::AngularPositionVelocityLuenbergerObserver yaw_observer;
   xgc2_observer::ArrayDifferentiator<3> array_diff;
   xgc2_observer::ScalarRecursiveLeastSquares rls;
+  xgc2_observer::InertialPoseEskf inertial_pose_eskf;
 
   const auto dt0 = dt_guard.update(1.0);
   const auto dt1 = dt_guard.update(1.01);
@@ -48,6 +49,11 @@ int main()
   const auto array_samples = array_diff.update({{0.0, 1.0, 2.0}}, 0.01);
   rls.reset(2.0);
   const auto rls_sample = rls.update(4.0, 2.0);
+  xgc2_observer::PoseMeasurement pose_sample;
+  pose_sample.received = true;
+  pose_sample.valid = true;
+  pose_sample.stamp_sec = 1.0;
+  inertial_pose_eskf.initializeFromPose(pose_sample, nullptr);
 
   return dt0.accepted && dt1.accepted &&
          derivative.measurement_accepted &&
@@ -55,7 +61,8 @@ int main()
          estimate.measurement_accepted &&
          yaw_estimate.measurement_accepted &&
          array_samples[0].measurement_accepted &&
-         rls_sample.measurement_accepted ? 0 : 1;
+         rls_sample.measurement_accepted &&
+         inertial_pose_eskf.initialized() ? 0 : 1;
 }
 CPP
 

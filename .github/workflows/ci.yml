@@ -24,11 +24,12 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            clang-format \
-            clang-tidy \
-            cmake \
-            cppcheck
+                build-essential \
+                clang-format \
+                clang-tidy \
+                cmake \
+                cppcheck \
+                libeigen3-dev
 
       - name: Run C++ quality gate
         run: |
@@ -83,7 +84,8 @@ jobs:
                 dpkg-dev \
                 fakeroot \
                 file \
-                git
+                git \
+                libeigen3-dev
               git config --global --add safe.directory /work
               ./.xgc2/scripts/check_package_compliance.sh
               ./.xgc2/scripts/build_deb.sh

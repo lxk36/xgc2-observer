@@ -16,7 +16,9 @@ The scope is deliberately narrow:
 - position/velocity Luenberger-style observers for motion-capture and target
   tracking signals;
 - scalar recursive least-squares estimation for one-parameter online models;
-- lightweight `std::array` wrappers for fixed-size multi-axis use.
+- lightweight `std::array` wrappers for fixed-size multi-axis use;
+- ROS-independent SE3 helpers and inertial pose ESKF for rigid-body IMU plus
+  external pose measurements.
 
 ## Install
 
@@ -30,6 +32,7 @@ The package installs:
 ```text
 /usr/include/xgc2_observer/
 /usr/lib/cmake/xgc2_observer/
+/usr/share/doc/libxgc2-observer-dev/matlab/
 ```
 
 ## CMake Usage
@@ -177,6 +180,27 @@ const auto estimate = observer.update(measured_position, dt_s);
 `AngularPositionVelocityLuenbergerObserver` has the same interface, but applies
 angle wrapping to the predicted angle and shortest-distance residual.  Use it
 for yaw or other continuous revolute coordinates.
+
+### SE3 And `InertialPoseEskf`
+
+`InertialPoseEskf` estimates a generic rigid-body state from body-frame IMU
+samples and external pose measurements.  It is deliberately not tied to UAV,
+ROS, VRPN, MAVROS, or PX4 naming.  Product packages map their runtime concepts
+onto:
+
+- `InertialSample`: angular velocity and linear acceleration in the body frame;
+- `PoseMeasurement`: external marker pose in a measurement frame;
+- `measurement_frame_to_world`: fixed transform from measurement frame to world;
+- `body_to_marker`: fixed transform from body/IMU frame to the tracked marker.
+
+The public state contains position, velocity, orientation, angular velocity,
+IMU bias placeholders, gravity, the body-to-marker transform, and a scalar
+covariance trace used for health gating.
+
+MATLAB reference scenarios are installed under
+`/usr/share/doc/libxgc2-observer-dev/matlab/inertial_pose_eskf/` and mirror the
+C++ test coverage for initialization, propagation, pose correction, outlier
+rejection, invalid input, large `dt`, and quaternion normalization.
 
 ### `ScalarRecursiveLeastSquares`
 
