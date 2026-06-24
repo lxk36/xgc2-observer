@@ -1,13 +1,13 @@
-#ifndef XGC2_OBSERVER_ARRAY_OBSERVER_HPP
-#define XGC2_OBSERVER_ARRAY_OBSERVER_HPP
+#ifndef XGC2_MATH_ARRAY_OBSERVER_HPP
+#define XGC2_MATH_ARRAY_OBSERVER_HPP
 
 #include <array>
 #include <cstddef>
 
-#include "xgc2_observer/differentiator.hpp"
-#include "xgc2_observer/luenberger_observer.hpp"
+#include "observer/differentiator.hpp"
+#include "observer/luenberger_observer.hpp"
 
-namespace xgc2_observer {
+namespace xgc2_math {
 
 template <std::size_t N> class ArrayDifferentiator {
   public:
@@ -132,6 +132,6 @@ template <std::size_t N> class ArrayPositionVelocityLuenbergerObserver {
     std::array<PositionVelocityLuenbergerObserver, N> observers_{};
 };
 
-} // namespace xgc2_observer
+} // namespace xgc2_math
 
-#endif // XGC2_OBSERVER_ARRAY_OBSERVER_HPP
+#endif // XGC2_MATH_ARRAY_OBSERVER_HPP

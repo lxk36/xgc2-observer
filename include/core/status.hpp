@@ -1,7 +1,7 @@
-#ifndef XGC2_OBSERVER_STATUS_HPP
-#define XGC2_OBSERVER_STATUS_HPP
+#ifndef XGC2_MATH_STATUS_HPP
+#define XGC2_MATH_STATUS_HPP
 
-namespace xgc2_observer {
+namespace xgc2_math {
 
 enum class SampleStatus {
     kInitialized,
@@ -38,6 +38,6 @@ inline bool measurementHeld(SampleStatus status) {
     return !measurementAccepted(status);
 }
 
-} // namespace xgc2_observer
+} // namespace xgc2_math
 
-#endif // XGC2_OBSERVER_STATUS_HPP
+#endif // XGC2_MATH_STATUS_HPP

@@ -1,15 +1,22 @@
 schema: xgc2.product.v1
-id: libxgc2-observer-dev
-name: XGC2 Observer
+id: libxgc2-math-dev
+name: XGC2 Math
+version: 0.4.0-1
 kind: toolchain-apt
-summary: Header-only C++ observer, differentiator, and signal filtering utilities for XGC2 robotics runtime code.
+summary: Header-only C++ math library for XGC2 geometry, filters, observers, estimators, and control utilities.
 
 apt:
   distribution: focal,jammy,noble
   install:
-    - libxgc2-observer-dev
+    - libxgc2-math-dev
   packages:
-    - libxgc2-observer-dev
+    - libxgc2-math-core-dev
+    - libxgc2-math-geometry-dev
+    - libxgc2-math-filter-dev
+    - libxgc2-math-observer-dev
+    - libxgc2-math-estimation-dev
+    - libxgc2-math-control-dev
+    - libxgc2-math-dev
   depends:
     - libeigen3-dev
     - libc6
@@ -19,19 +26,16 @@ apt:
 usage:
   install: |
     sudo apt update
-    sudo apt install libxgc2-observer-dev
+    sudo apt install libxgc2-math-dev
   smoke_test: |
-    cmake --find-package -DNAME=xgc2_observer -DCOMPILER_ID=GNU -DLANGUAGE=CXX -DMODE=EXIST
+    cmake --find-package -DNAME=xgc2_math -DCOMPILER_ID=GNU -DLANGUAGE=CXX -DMODE=EXIST
   notes: |
-    CMake consumers should use find_package(xgc2_observer REQUIRED CONFIG)
-    and link xgc2_observer::observer. The public include path is
-    <xgc2_observer/observer.hpp>.
+    CMake consumers should use find_package(xgc2_math REQUIRED CONFIG)
+    and link xgc2_math::math or one of the component targets:
+    xgc2_math::core, xgc2_math::geometry, xgc2_math::filter,
+    xgc2_math::observer, xgc2_math::estimation, xgc2_math::control.
 
 ownership:
   paths:
-    - /usr/include/xgc2_observer
-    - /usr/lib/cmake/xgc2_observer
-
-conflicts:
-  apt_packages:
-    - ros-noetic-xgc2-observer
+    - /usr/include/xgc2_math
+    - /usr/lib/cmake/xgc2_math

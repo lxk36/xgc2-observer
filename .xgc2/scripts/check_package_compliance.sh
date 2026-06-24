@@ -31,19 +31,24 @@ required_files=(
   .clang-tidy
   README.md
   CMakeLists.txt
-  cmake/xgc2_observerConfig.cmake.in
-  include/xgc2_observer/observer.hpp
-  include/xgc2_observer/angle.hpp
-  include/xgc2_observer/angle_differentiator.hpp
-  include/xgc2_observer/array_observer.hpp
-  include/xgc2_observer/butterworth_filter.hpp
-  include/xgc2_observer/differentiator.hpp
-  include/xgc2_observer/exponential_filter.hpp
-  include/xgc2_observer/luenberger_observer.hpp
-  include/xgc2_observer/recursive_least_squares.hpp
-  include/xgc2_observer/status.hpp
-  include/xgc2_observer/time_delta.hpp
-  test/observer_header_test.cpp
+  cmake/xgc2_mathConfig.cmake.in
+  include/math.hpp
+  include/types.hpp
+  include/core.hpp
+  include/geometry.hpp
+  include/filter.hpp
+  include/observer.hpp
+  include/estimation.hpp
+  include/control.hpp
+  include/core/angle.hpp
+  include/core/status.hpp
+  include/core/time_delta.hpp
+  include/geometry/se3.hpp
+  include/geometry/occupied_sets/sphere_set.h
+  include/filter/exponential_filter.hpp
+  include/observer/differentiator.hpp
+  include/estimation/inertial_pose_eskf.hpp
+  test/math_header_test.cpp
   .github/workflows/ci.yml
   .xgc2/product.yml
   .xgc2/scripts/build_deb.sh
@@ -60,9 +65,9 @@ for file in "${required_files[@]}"; do
   fi
 done
 
-for removed_file in package.xml .github/workflows/build-debs.yml; do
+for removed_file in package.xml .github/workflows/build-debs.yml include/xgc2_observer cmake/xgc2_observerConfig.cmake.in; do
   if [[ -e "${removed_file}" ]]; then
-    echo "system package must not keep ROS/catkin file: ${removed_file}" >&2
+    echo "xgc2-math package must not keep obsolete file: ${removed_file}" >&2
     exit 1
   fi
 done
@@ -72,4 +77,9 @@ if grep -R "find_package(catkin\\|catkin_package\\|catkin_add_gtest" CMakeLists.
   exit 1
 fi
 
-echo "libxgc2-observer-dev package compliance checks passed."
+if grep -R "xgc2_observer\\|xgc2_geometry" CMakeLists.txt cmake include test README.md .github .xgc2/product.yml 2>/dev/null; then
+  echo "obsolete xgc2_observer/xgc2_geometry identifiers remain." >&2
+  exit 1
+fi
+
+echo "libxgc2-math-dev package compliance checks passed."

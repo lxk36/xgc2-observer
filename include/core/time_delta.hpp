@@ -1,12 +1,12 @@
-#ifndef XGC2_OBSERVER_TIME_DELTA_HPP
-#define XGC2_OBSERVER_TIME_DELTA_HPP
+#ifndef XGC2_MATH_TIME_DELTA_HPP
+#define XGC2_MATH_TIME_DELTA_HPP
 
 #include <algorithm>
 #include <cmath>
 
-#include "xgc2_observer/status.hpp"
+#include "core/status.hpp"
 
-namespace xgc2_observer {
+namespace xgc2_math {
 
 struct TimeDeltaGuardOptions {
     double min_dt_s{1.0e-4};
@@ -107,6 +107,6 @@ class TimeDeltaGuard {
     bool initialized_{false};
 };
 
-} // namespace xgc2_observer
+} // namespace xgc2_math
 
-#endif // XGC2_OBSERVER_TIME_DELTA_HPP
+#endif // XGC2_MATH_TIME_DELTA_HPP

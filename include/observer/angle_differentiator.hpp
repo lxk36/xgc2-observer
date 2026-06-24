@@ -1,12 +1,12 @@
-#ifndef XGC2_OBSERVER_ANGLE_DIFFERENTIATOR_HPP
-#define XGC2_OBSERVER_ANGLE_DIFFERENTIATOR_HPP
+#ifndef XGC2_MATH_ANGLE_DIFFERENTIATOR_HPP
+#define XGC2_MATH_ANGLE_DIFFERENTIATOR_HPP
 
 #include <cmath>
 
-#include "xgc2_observer/angle.hpp"
-#include "xgc2_observer/differentiator.hpp"
+#include "core/angle.hpp"
+#include "observer/differentiator.hpp"
 
-namespace xgc2_observer {
+namespace xgc2_math {
 
 class AngleDifferentiator {
   public:
@@ -97,6 +97,6 @@ class AngleDifferentiator {
     bool initialized_{false};
 };
 
-} // namespace xgc2_observer
+} // namespace xgc2_math
 
-#endif // XGC2_OBSERVER_ANGLE_DIFFERENTIATOR_HPP
+#endif // XGC2_MATH_ANGLE_DIFFERENTIATOR_HPP

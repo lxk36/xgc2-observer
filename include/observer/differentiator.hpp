@@ -1,14 +1,14 @@
-#ifndef XGC2_OBSERVER_DIFFERENTIATOR_HPP
-#define XGC2_OBSERVER_DIFFERENTIATOR_HPP
+#ifndef XGC2_MATH_DIFFERENTIATOR_HPP
+#define XGC2_MATH_DIFFERENTIATOR_HPP
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-#include "xgc2_observer/butterworth_filter.hpp"
-#include "xgc2_observer/status.hpp"
+#include "core/status.hpp"
+#include "filter/butterworth_filter.hpp"
 
-namespace xgc2_observer {
+namespace xgc2_math {
 
 inline bool isNonnegativeLimit(double value) {
     return std::isinf(value) || (std::isfinite(value) && value >= 0.0);
@@ -145,6 +145,6 @@ class Differentiator {
     bool initialized_{false};
 };
 
-} // namespace xgc2_observer
+} // namespace xgc2_math
 
-#endif // XGC2_OBSERVER_DIFFERENTIATOR_HPP
+#endif // XGC2_MATH_DIFFERENTIATOR_HPP

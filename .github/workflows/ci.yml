@@ -29,7 +29,8 @@ jobs:
                 clang-tidy \
                 cmake \
                 cppcheck \
-                libeigen3-dev
+                libeigen3-dev \
+                libgtest-dev
 
       - name: Run C++ quality gate
         run: |
@@ -59,6 +60,12 @@ jobs:
   deb-build-and-smoke:
     needs: package-compliance
     runs-on: ubuntu-latest
+    env:
+      APT_REPO_HOST: ${{ secrets.APT_REPO_HOST }}
+      APT_REPO_PORT: ${{ secrets.APT_REPO_PORT }}
+      APT_REPO_USER: ${{ secrets.APT_REPO_USER }}
+      APT_REPO_SSH_KEY: ${{ secrets.APT_REPO_SSH_KEY }}
+      APT_REPO_KNOWN_HOSTS: ${{ secrets.APT_REPO_KNOWN_HOSTS }}
     defaults:
       run:
         shell: bash
@@ -85,49 +92,35 @@ jobs:
                 fakeroot \
                 file \
                 git \
-                libeigen3-dev
+                libeigen3-dev \
+                libgtest-dev
               git config --global --add safe.directory /work
               ./.xgc2/scripts/check_package_compliance.sh
               ./.xgc2/scripts/build_deb.sh
-              apt-get install -y ./.ci/debs/libxgc2-observer-dev_*.deb
+              apt-get install -y ./.ci/debs/*.deb
               ./.xgc2/scripts/smoke_test_installed.sh
             '
 
       - name: Upload deb artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: libxgc2-observer-dev-all
+          name: libxgc2-math-dev-all
           path: .ci/debs/*.deb
 
       - name: Publish focal APT package
-        if: github.event_name != 'pull_request'
+        if: ${{ github.event_name != 'pull_request' && env.APT_REPO_HOST != '' && env.APT_REPO_PORT != '' && env.APT_REPO_SSH_KEY != '' && env.APT_REPO_KNOWN_HOSTS != '' }}
         env:
-          APT_REPO_HOST: ${{ secrets.APT_REPO_HOST }}
-          APT_REPO_PORT: ${{ secrets.APT_REPO_PORT }}
-          APT_REPO_USER: ${{ secrets.APT_REPO_USER }}
-          APT_REPO_SSH_KEY: ${{ secrets.APT_REPO_SSH_KEY }}
-          APT_REPO_KNOWN_HOSTS: ${{ secrets.APT_REPO_KNOWN_HOSTS }}
           APT_REPO_DISTRIBUTION: focal
         run: ./.xgc2/scripts/publish_self_hosted_apt.sh --deb-dir .ci/debs
 
       - name: Publish jammy APT package
-        if: github.event_name != 'pull_request'
+        if: ${{ github.event_name != 'pull_request' && env.APT_REPO_HOST != '' && env.APT_REPO_PORT != '' && env.APT_REPO_SSH_KEY != '' && env.APT_REPO_KNOWN_HOSTS != '' }}
         env:
-          APT_REPO_HOST: ${{ secrets.APT_REPO_HOST }}
-          APT_REPO_PORT: ${{ secrets.APT_REPO_PORT }}
-          APT_REPO_USER: ${{ secrets.APT_REPO_USER }}
-          APT_REPO_SSH_KEY: ${{ secrets.APT_REPO_SSH_KEY }}
-          APT_REPO_KNOWN_HOSTS: ${{ secrets.APT_REPO_KNOWN_HOSTS }}
           APT_REPO_DISTRIBUTION: jammy
         run: ./.xgc2/scripts/publish_self_hosted_apt.sh --deb-dir .ci/debs
 
       - name: Publish noble APT package
-        if: github.event_name != 'pull_request'
+        if: ${{ github.event_name != 'pull_request' && env.APT_REPO_HOST != '' && env.APT_REPO_PORT != '' && env.APT_REPO_SSH_KEY != '' && env.APT_REPO_KNOWN_HOSTS != '' }}
         env:
-          APT_REPO_HOST: ${{ secrets.APT_REPO_HOST }}
-          APT_REPO_PORT: ${{ secrets.APT_REPO_PORT }}
-          APT_REPO_USER: ${{ secrets.APT_REPO_USER }}
-          APT_REPO_SSH_KEY: ${{ secrets.APT_REPO_SSH_KEY }}
-          APT_REPO_KNOWN_HOSTS: ${{ secrets.APT_REPO_KNOWN_HOSTS }}
           APT_REPO_DISTRIBUTION: noble
         run: ./.xgc2/scripts/publish_self_hosted_apt.sh --deb-dir .ci/debs

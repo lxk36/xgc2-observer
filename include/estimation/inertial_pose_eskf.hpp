@@ -5,9 +5,9 @@
 
 #include <Eigen/Geometry>
 
-#include "xgc2_observer/se3.hpp"
+#include "geometry/se3.hpp"
 
-namespace xgc2_observer {
+namespace xgc2_math {
 
 struct InertialPoseEskfConfig {
     double gravity_mps2{9.8066};
@@ -286,4 +286,4 @@ class InertialPoseEskf {
     bool has_corrected_body_pose_{false};
 };
 
-} // namespace xgc2_observer
+} // namespace xgc2_math

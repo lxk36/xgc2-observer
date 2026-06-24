@@ -1,10 +1,10 @@
-#ifndef XGC2_OBSERVER_ANGLE_HPP
-#define XGC2_OBSERVER_ANGLE_HPP
+#ifndef XGC2_MATH_ANGLE_HPP
+#define XGC2_MATH_ANGLE_HPP
 
 #include <cmath>
 #include <limits>
 
-namespace xgc2_observer {
+namespace xgc2_math {
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kTwoPi = 2.0 * kPi;
@@ -38,6 +38,6 @@ inline double shortestAngularDistance(double from_rad, double to_rad) {
     return normalizeAngle(to_rad - from_rad);
 }
 
-} // namespace xgc2_observer
+} // namespace xgc2_math
 
-#endif // XGC2_OBSERVER_ANGLE_HPP
+#endif // XGC2_MATH_ANGLE_HPP

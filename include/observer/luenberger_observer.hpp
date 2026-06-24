@@ -1,14 +1,14 @@
-#ifndef XGC2_OBSERVER_LUENBERGER_OBSERVER_HPP
-#define XGC2_OBSERVER_LUENBERGER_OBSERVER_HPP
+#ifndef XGC2_MATH_LUENBERGER_OBSERVER_HPP
+#define XGC2_MATH_LUENBERGER_OBSERVER_HPP
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-#include "xgc2_observer/angle.hpp"
-#include "xgc2_observer/differentiator.hpp"
+#include "core/angle.hpp"
+#include "observer/differentiator.hpp"
 
-namespace xgc2_observer {
+namespace xgc2_math {
 
 struct PositionVelocityObserverOptions {
     double position_gain{0.35};
@@ -235,6 +235,6 @@ class AngularPositionVelocityLuenbergerObserver {
     bool initialized_{false};
 };
 
-} // namespace xgc2_observer
+} // namespace xgc2_math
 
-#endif // XGC2_OBSERVER_LUENBERGER_OBSERVER_HPP
+#endif // XGC2_MATH_LUENBERGER_OBSERVER_HPP

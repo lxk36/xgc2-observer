@@ -1,0 +1,12 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Eigen3)
+
+include("${CMAKE_CURRENT_LIST_DIR}/xgc2_mathTargets.cmake")
+
+macro(xgc2_math_require)
+  if(NOT TARGET xgc2_math::math)
+    message(FATAL_ERROR "xgc2_math::math target is not available")
+  endif()
+endmacro()

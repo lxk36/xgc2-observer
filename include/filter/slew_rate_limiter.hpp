@@ -1,10 +1,10 @@
-#ifndef XGC2_OBSERVER_SLEW_RATE_LIMITER_HPP
-#define XGC2_OBSERVER_SLEW_RATE_LIMITER_HPP
+#ifndef XGC2_MATH_SLEW_RATE_LIMITER_HPP
+#define XGC2_MATH_SLEW_RATE_LIMITER_HPP
 
 #include <algorithm>
 #include <cmath>
 
-namespace xgc2_observer {
+namespace xgc2_math {
 
 class SlewRateLimiter {
   public:
@@ -20,8 +20,7 @@ class SlewRateLimiter {
     }
 
     void setMaxRatePerSecond(double max_rate_per_second) {
-        max_rate_per_second_ =
-            std::isfinite(max_rate_per_second) ? std::max(0.0, max_rate_per_second) : 0.0;
+        max_rate_per_second_ = std::isfinite(max_rate_per_second) ? std::max(0.0, max_rate_per_second) : 0.0;
     }
 
     void resetState(double value = 0.0) {
@@ -59,6 +58,6 @@ class SlewRateLimiter {
     bool initialized_{false};
 };
 
-} // namespace xgc2_observer
+} // namespace xgc2_math
 
-#endif // XGC2_OBSERVER_SLEW_RATE_LIMITER_HPP
+#endif // XGC2_MATH_SLEW_RATE_LIMITER_HPP

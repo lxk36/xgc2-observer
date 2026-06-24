@@ -3,29 +3,13 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-build_dir="${XGC2_OBSERVER_QUALITY_BUILD_DIR:-${repo_root}/.ci/cpp-quality}"
+build_dir="${XGC2_MATH_QUALITY_BUILD_DIR:-${repo_root}/.ci/cpp-quality}"
 
 cd "${repo_root}"
 
-sources=(
-  include/xgc2_observer/angle.hpp
-  include/xgc2_observer/angle_differentiator.hpp
-  include/xgc2_observer/array_observer.hpp
-  include/xgc2_observer/butterworth_filter.hpp
-  include/xgc2_observer/differentiator.hpp
-  include/xgc2_observer/exponential_filter.hpp
-  include/xgc2_observer/inertial_pose_eskf.hpp
-  include/xgc2_observer/luenberger_observer.hpp
-  include/xgc2_observer/observer.hpp
-  include/xgc2_observer/recursive_least_squares.hpp
-  include/xgc2_observer/se3.hpp
-  include/xgc2_observer/status.hpp
-  include/xgc2_observer/time_delta.hpp
-  test/observer_header_test.cpp
-)
-
+mapfile -t sources < <(find include test -type f \( -name '*.hpp' -o -name '*.h' -o -name '*.cpp' \) | sort)
 tidy_sources=(
-  test/observer_header_test.cpp
+  test/math_header_test.cpp
 )
 
 for tool in cmake ctest clang-format clang-tidy cppcheck; do

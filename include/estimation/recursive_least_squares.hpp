@@ -1,13 +1,13 @@
-#ifndef XGC2_OBSERVER_RECURSIVE_LEAST_SQUARES_HPP
-#define XGC2_OBSERVER_RECURSIVE_LEAST_SQUARES_HPP
+#ifndef XGC2_MATH_RECURSIVE_LEAST_SQUARES_HPP
+#define XGC2_MATH_RECURSIVE_LEAST_SQUARES_HPP
 
 #include <algorithm>
 #include <cmath>
 
-#include "xgc2_observer/differentiator.hpp"
-#include "xgc2_observer/status.hpp"
+#include "core/status.hpp"
+#include "observer/differentiator.hpp"
 
-namespace xgc2_observer {
+namespace xgc2_math {
 
 struct ScalarRecursiveLeastSquaresOptions {
     double forgetting_factor{0.998};
@@ -150,6 +150,6 @@ class ScalarRecursiveLeastSquares {
     bool initialized_{false};
 };
 
-} // namespace xgc2_observer
+} // namespace xgc2_math
 
-#endif // XGC2_OBSERVER_RECURSIVE_LEAST_SQUARES_HPP
+#endif // XGC2_MATH_RECURSIVE_LEAST_SQUARES_HPP

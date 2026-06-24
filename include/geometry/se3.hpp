@@ -4,7 +4,7 @@
 
 #include <Eigen/Geometry>
 
-namespace xgc2_observer {
+namespace xgc2_math {
 
 struct Pose3 {
     Eigen::Vector3d position{Eigen::Vector3d::Zero()};
@@ -90,4 +90,12 @@ inline Eigen::Vector3d clampNorm(const Eigen::Vector3d& value, double max_norm) 
     return value * (max_norm / norm);
 }
 
-} // namespace xgc2_observer
+inline Eigen::Matrix<double, 6, 1> se3Error(const Pose3& reference, const Pose3& measured) {
+    const Pose3 delta = compose(inverse(reference), measured);
+    Eigen::Matrix<double, 6, 1> result;
+    result.head<3>() = delta.position;
+    result.tail<3>() = logMap(delta.orientation);
+    return result;
+}
+
+} // namespace xgc2_math

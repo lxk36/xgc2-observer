@@ -1,7 +1,7 @@
 # Inertial Pose ESKF MATLAB Simulation
 
 `run_inertial_pose_eskf_simulation.m` mirrors the C++ observer tests for the
-ROS-independent `xgc2_observer::InertialPoseEskf` algorithm. It uses the same
+ROS-independent `xgc2_math::InertialPoseEskf` algorithm. It uses the same
 state variables, SE3 composition convention, innovation gates, quaternion
 normalization rule, and non-ideal input cases.
 

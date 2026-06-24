@@ -1,12 +1,12 @@
-#ifndef XGC2_OBSERVER_EXPONENTIAL_FILTER_HPP
-#define XGC2_OBSERVER_EXPONENTIAL_FILTER_HPP
+#ifndef XGC2_MATH_EXPONENTIAL_FILTER_HPP
+#define XGC2_MATH_EXPONENTIAL_FILTER_HPP
 
 #include <algorithm>
 #include <cmath>
 
-#include "xgc2_observer/angle.hpp"
+#include "core/angle.hpp"
 
-namespace xgc2_observer {
+namespace xgc2_math {
 
 class ExponentialLowPass {
   public:
@@ -62,6 +62,6 @@ class ExponentialLowPass {
     bool initialized_{false};
 };
 
-} // namespace xgc2_observer
+} // namespace xgc2_math
 
-#endif // XGC2_OBSERVER_EXPONENTIAL_FILTER_HPP
+#endif // XGC2_MATH_EXPONENTIAL_FILTER_HPP
