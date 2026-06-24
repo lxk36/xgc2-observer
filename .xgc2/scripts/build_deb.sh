@@ -5,7 +5,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 
-version="${PACKAGE_VERSION:-0.4.0-1}"
+version="${PACKAGE_VERSION:-0.4.1-1}"
 build_dir="${XGC2_MATH_BUILD_DIR:-${repo_root}/.ci/build}"
 stage_dir="${XGC2_MATH_STAGE_DIR:-${repo_root}/.ci/stage}"
 output_dir="${XGC2_MATH_DEB_OUTPUT_DIR:-${repo_root}/.ci/debs}"

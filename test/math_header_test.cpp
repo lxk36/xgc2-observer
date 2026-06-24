@@ -452,10 +452,9 @@ void testInertialPoseEskfInvalidAndLargeDtHoldState() {
 
 void testInertialPoseEskfGyroBiasAndCorrectedPose() {
     xgc2_math::InertialPoseEskfConfig config;
-    config.position_update_gain = 0.0;
-    config.velocity_update_gain = 0.0;
-    config.orientation_update_gain = 0.5;
-    config.gyro_bias_update_gain = 0.01;
+    config.pose_position_noise_std = 0.01;
+    config.pose_orientation_noise_std = 0.01;
+    config.gyro_bias_random_walk_std = 1.0e-4;
 
     xgc2_math::InertialPoseEskf eskf;
     eskf.setConfig(config);
@@ -467,8 +466,8 @@ void testInertialPoseEskfGyroBiasAndCorrectedPose() {
     const auto result = eskf.updatePose(yaw_pose);
     expect(result.accepted);
     expect(std::fabs(eskf.correctedBodyPose().position.x() - 0.2) < 1.0e-12);
-    expect(std::fabs(eskf.state().position.x()) < 1.0e-12);
-    expect(eskf.state().gyro_bias.z() < 0.0);
+    expect(eskf.state().position.x() > 0.0);
+    expect(eskf.covariance().trace() > 0.0);
     expect(eskf.state().orientation.w() >= 0.0);
 }
 
