@@ -1,10 +1,15 @@
 variableScope:include/xgc2_math/optimization/lbfgs.hpp
 variableScope:include/xgc2_math/optimization/root_finder.hpp
 variableScope:include/xgc2_math/optimization/minco.hpp
+variableScope:include/xgc2_math/optimization/minco_trajectory.hpp
 constStatement:include/xgc2_math/optimization/root_finder.hpp
 constStatement:include/xgc2_math/trajectory/trajectory2.hpp
 constStatement:include/xgc2_math/trajectory/trajectory3.hpp
 constStatement:include/xgc2_math/trajectory/analytic/detail.hpp
+constParameterPointer:include/xgc2_math/optimization/root_finder.hpp
 constParameter:include/xgc2_math/trajectory/flatness.hpp
 constParameter:include/xgc2_math/trajectory/trajectory3.hpp
+constParameterReference:include/xgc2_math/trajectory/flatness.hpp
+constParameterReference:include/xgc2_math/trajectory/trajectory3.hpp
+uninitMemberVar:include/xgc2_math/trajectory/flatness.hpp
 useStlAlgorithm:include/xgc2_math/trajectory/trajectory3.hpp

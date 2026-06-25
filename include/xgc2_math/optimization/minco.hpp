@@ -249,7 +249,7 @@ class MINCO_S2NU {
     ~MINCO_S2NU() { A.destroy(); }
 
   private:
-    int N;                              // 轨迹段数
+    int N{0};                           // 轨迹段数
     Eigen::Matrix<double, 3, 2> headPV; // 起始状态：位置(P)和速度(V)，3维空间
     Eigen::Matrix<double, 3, 2> tailPV; // 终止状态：位置(P)和速度(V)，3维空间
     BandedSystem A;                     // 带状线性系统矩阵
@@ -494,7 +494,7 @@ class MINCO_S3NU {
     ~MINCO_S3NU() { A.destroy(); }
 
   private:
-    int N;                   // 轨迹段数
+    int N{0};                // 轨迹段数
     Eigen::Matrix3d headPVA; // 起始状态：位置、速度、加速度（3×3矩阵）
     Eigen::Matrix3d tailPVA; // 终止状态：位置、速度、加速度（3×3矩阵）
     BandedSystem A;          // 带状线性系统矩阵

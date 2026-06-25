@@ -54,8 +54,8 @@ template <int D> class Piece {
     typedef Eigen::Matrix<double, 3, D - 1> AccCoefficientMat;
 
   private:
-    double duration;         // 该轨迹片段的持续时间
-    CoefficientMat coeffMat; // 系数矩阵，每行对应x, y, z三个维度的多项式系数
+    double duration{0.0};                            // 该轨迹片段的持续时间
+    CoefficientMat coeffMat{CoefficientMat::Zero()}; // 系数矩阵，每行对应x, y, z三个维度的多项式系数
 
   public:
     // 默认构造函数
@@ -274,7 +274,7 @@ template <int D> class Piece {
             double maxVelRateSqr = -INFINITY;
             double tempNormSqr;
             // 遍历所有候选点，找到最大速度
-            for (std::set<double>::const_iterator it = candidates.begin(); it != candidates.end(); it++) {
+            for (std::set<double>::const_iterator it = candidates.begin(); it != candidates.end(); ++it) {
                 if (0.0 <= *it && 1.0 >= *it) {
                     tempNormSqr = getVel((*it) * duration).squaredNorm();
                     maxVelRateSqr = maxVelRateSqr < tempNormSqr ? tempNormSqr : maxVelRateSqr;
@@ -329,7 +329,7 @@ template <int D> class Piece {
             double maxAccRateSqr = -INFINITY;
             double tempNormSqr;
             // 遍历所有候选点，找到最大加速度
-            for (std::set<double>::const_iterator it = candidates.begin(); it != candidates.end(); it++) {
+            for (std::set<double>::const_iterator it = candidates.begin(); it != candidates.end(); ++it) {
                 if (0.0 <= *it && 1.0 >= *it) {
                     tempNormSqr = getAcc((*it) * duration).squaredNorm();
                     maxAccRateSqr = maxAccRateSqr < tempNormSqr ? tempNormSqr : maxAccRateSqr;
