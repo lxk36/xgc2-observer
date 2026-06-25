@@ -1,12 +1,14 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <cmath>
 
 #include <Eigen/Cholesky>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+#include "xgc2_math/estimation/health.hpp"
 #include "xgc2_math/geometry/se3.hpp"
 
 namespace xgc2_math {
@@ -15,6 +17,8 @@ struct Pose3InertialEskfConfig {
     double gravity_mps2{9.8066};
     Pose3 measurement_frame_to_world{};
     Pose3 body_to_marker{};
+    // Retained for config compatibility. Pose3InertialEskf is the fixed-extrinsic
+    // flight estimator; online extrinsic calibration belongs in a separate estimator.
     bool estimate_extrinsic{false};
 
     double accel_noise_std{0.35};
@@ -27,8 +31,9 @@ struct Pose3InertialEskfConfig {
     double extrinsic_orientation_random_walk_std{1.0e-5};
     double innovation_position_gate_m{1.5};
     double innovation_orientation_gate_rad{0.8};
+    double pose_nis_gate{22.5};
     double covariance_high_threshold{100.0};
-    double max_propagation_dt_s{0.05};
+    double max_propagation_dt_s{0.01};
     double initial_position_variance{0.01};
     double initial_velocity_variance{0.1};
     double initial_orientation_variance{0.01};
@@ -36,6 +41,8 @@ struct Pose3InertialEskfConfig {
     double initial_accel_bias_variance{0.1};
     double initial_extrinsic_position_variance{1.0e-8};
     double initial_extrinsic_orientation_variance{1.0e-8};
+    std::size_t inertial_buffer_capacity{128};
+    ObservationHealthConfig vrpn_health{};
 };
 
 struct InertialSample {
@@ -126,15 +133,15 @@ inline void normalize(Pose3InertialEskfConfig& config) {
         pose3_inertial_eskf_detail::nonNegativeOr(config.gyro_bias_random_walk_std, 1.0e-4);
     config.accel_bias_random_walk_std =
         pose3_inertial_eskf_detail::nonNegativeOr(config.accel_bias_random_walk_std, 1.0e-3);
-    config.extrinsic_position_random_walk_std =
-        pose3_inertial_eskf_detail::nonNegativeOr(config.extrinsic_position_random_walk_std, 1.0e-5);
-    config.extrinsic_orientation_random_walk_std =
-        pose3_inertial_eskf_detail::nonNegativeOr(config.extrinsic_orientation_random_walk_std, 1.0e-5);
+    config.estimate_extrinsic = false;
+    config.extrinsic_position_random_walk_std = 0.0;
+    config.extrinsic_orientation_random_walk_std = 0.0;
     config.innovation_position_gate_m = pose3_inertial_eskf_detail::positiveOr(config.innovation_position_gate_m, 1.5);
     config.innovation_orientation_gate_rad =
         pose3_inertial_eskf_detail::positiveOr(config.innovation_orientation_gate_rad, 0.8);
+    config.pose_nis_gate = pose3_inertial_eskf_detail::positiveOr(config.pose_nis_gate, 22.5);
     config.covariance_high_threshold = pose3_inertial_eskf_detail::positiveOr(config.covariance_high_threshold, 100.0);
-    config.max_propagation_dt_s = pose3_inertial_eskf_detail::positiveOr(config.max_propagation_dt_s, 0.05);
+    config.max_propagation_dt_s = pose3_inertial_eskf_detail::positiveOr(config.max_propagation_dt_s, 0.01);
     config.initial_position_variance = pose3_inertial_eskf_detail::positiveOr(config.initial_position_variance, 0.01);
     config.initial_velocity_variance = pose3_inertial_eskf_detail::positiveOr(config.initial_velocity_variance, 0.1);
     config.initial_orientation_variance =
@@ -142,14 +149,11 @@ inline void normalize(Pose3InertialEskfConfig& config) {
     config.initial_gyro_bias_variance = pose3_inertial_eskf_detail::positiveOr(config.initial_gyro_bias_variance, 0.01);
     config.initial_accel_bias_variance =
         pose3_inertial_eskf_detail::positiveOr(config.initial_accel_bias_variance, 0.1);
-    config.initial_extrinsic_position_variance =
-        config.estimate_extrinsic
-            ? pose3_inertial_eskf_detail::positiveOr(config.initial_extrinsic_position_variance, 1.0e-4)
-            : 1.0e-12;
-    config.initial_extrinsic_orientation_variance =
-        config.estimate_extrinsic
-            ? pose3_inertial_eskf_detail::positiveOr(config.initial_extrinsic_orientation_variance, 1.0e-4)
-            : 1.0e-12;
+    config.initial_extrinsic_position_variance = 0.0;
+    config.initial_extrinsic_orientation_variance = 0.0;
+    // Compatibility-only field. Pose3InertialEskf is a sequential multi-rate estimator
+    // and does not keep an internal history buffer.
+    config.inertial_buffer_capacity = config.inertial_buffer_capacity == 0u ? 1u : config.inertial_buffer_capacity;
 }
 
 inline Pose3InertialEskfConfig normalized(Pose3InertialEskfConfig config) {
@@ -157,9 +161,11 @@ inline Pose3InertialEskfConfig normalized(Pose3InertialEskfConfig config) {
     return config;
 }
 
+struct Pose3InertialEskfTestAccess;
+
 class Pose3InertialEskf {
   public:
-    static constexpr int kErrorStateDim = 21;
+    static constexpr int kErrorStateDim = 15;
     using ErrorVector = Eigen::Matrix<double, kErrorStateDim, 1>;
     using ErrorCovariance = Eigen::Matrix<double, kErrorStateDim, kErrorStateDim>;
     using MeasurementVector = Eigen::Matrix<double, 6, 1>;
@@ -169,15 +175,21 @@ class Pose3InertialEskf {
     struct PoseUpdateResult {
         bool accepted{false};
         bool innovation_rejected{false};
+        bool time_alignment_rejected{false};
         double position_innovation_norm{0.0};
         double orientation_innovation_norm{0.0};
         double mahalanobis_distance{0.0};
+        double innovation_window_chi_square{0.0};
+        VrpnObservationState vrpn_observation_state{VrpnObservationState::kTrusted};
+        FilterHealth filter_health{FilterHealth::kLost};
+        PoseFusionRejectReason reject_reason{PoseFusionRejectReason::kNone};
     };
 
     Pose3InertialEskf() { reset(); }
 
     void setConfig(const Pose3InertialEskfConfig& config) {
         config_ = normalized(config);
+        vrpn_health_.setConfig(config_.vrpn_health);
         reset();
     }
 
@@ -187,7 +199,13 @@ class Pose3InertialEskf {
         state_.body_to_marker = config_.body_to_marker;
         resetCovariance();
         corrected_body_pose_ = Pose3{};
+        raw_projected_body_pose_ = Pose3{};
         has_corrected_body_pose_ = false;
+        has_raw_projected_body_pose_ = false;
+        last_inertial_ = InertialSample{};
+        has_last_inertial_ = false;
+        vrpn_health_.reset();
+        last_fused_pose_stamp_sec_ = 0.0;
     }
 
     void initializeFromPose(const PoseMeasurement& pose, const InertialSample* inertial = nullptr) {
@@ -195,6 +213,8 @@ class Pose3InertialEskf {
             return;
         }
 
+        last_inertial_ = InertialSample{};
+        has_last_inertial_ = false;
         resetCovariance();
         const Pose3 marker_world = markerPoseInWorld(pose.pose);
         const Pose3 body_world = bodyPoseFromMarkerPose(marker_world, config_.body_to_marker);
@@ -204,55 +224,147 @@ class Pose3InertialEskf {
         state_.gravity = Eigen::Vector3d(0.0, 0.0, -config_.gravity_mps2);
         state_.body_to_marker = config_.body_to_marker;
         state_.last_pose_stamp_sec = pose.stamp_sec;
-        state_.last_inertial_stamp_sec =
-            inertial != nullptr && pose3_inertial_eskf_detail::validInertialSample(*inertial) ? inertial->stamp_sec
-                                                                                              : pose.stamp_sec;
+        state_.last_inertial_stamp_sec = pose.stamp_sec;
         if (inertial != nullptr && pose3_inertial_eskf_detail::validInertialSample(*inertial)) {
-            state_.angular_velocity = inertial->angular_velocity - state_.gyro_bias;
+            last_inertial_ = *inertial;
+            last_inertial_.stamp_sec = pose.stamp_sec;
+            state_.angular_velocity = last_inertial_.angular_velocity - state_.gyro_bias;
+            has_last_inertial_ = true;
         }
         state_.covariance_trace = covariance_.trace();
         state_.initialized = true;
-        corrected_body_pose_ = body_world;
+        corrected_body_pose_ = bodyPoseFromState(state_);
+        raw_projected_body_pose_ = body_world;
         has_corrected_body_pose_ = true;
+        has_raw_projected_body_pose_ = true;
+        vrpn_health_.reset();
+        last_fused_pose_stamp_sec_ = pose.stamp_sec;
     }
 
     void propagateInertial(const InertialSample& inertial) {
         if (!pose3_inertial_eskf_detail::validInertialSample(inertial)) {
             return;
         }
+        if (inertial.time_jump) {
+            reset();
+            return;
+        }
 
-        state_.angular_velocity = inertial.angular_velocity - state_.gyro_bias;
         if (!state_.initialized) {
             state_.last_inertial_stamp_sec = inertial.stamp_sec;
+            last_inertial_ = inertial;
+            has_last_inertial_ = true;
             return;
         }
 
         const double dt = inertial.stamp_sec - state_.last_inertial_stamp_sec;
         if (!std::isfinite(dt) || dt <= kMinDt) {
-            state_.last_inertial_stamp_sec = inertial.stamp_sec;
-            return;
-        }
-        if (dt > config_.max_propagation_dt_s) {
-            state_.last_inertial_stamp_sec = inertial.stamp_sec;
-            inflateCovariance(config_.max_propagation_dt_s);
             return;
         }
 
-        const Eigen::Vector3d accel_body = inertial.linear_acceleration - state_.accel_bias;
-        const Eigen::Quaterniond old_orientation = state_.orientation;
-        const Eigen::Matrix3d rotation = old_orientation.toRotationMatrix();
-        const Eigen::Vector3d acceleration_world = rotation * accel_body + state_.gravity;
-        state_.position += state_.velocity * dt + 0.5 * acceleration_world * dt * dt;
-        state_.velocity += acceleration_world * dt;
-        state_.orientation = normalizedQuaternion(state_.orientation * expMap(state_.angular_velocity * dt));
-        state_.last_inertial_stamp_sec = inertial.stamp_sec;
-        propagateCovariance(accel_body, rotation, dt);
-        state_.covariance_trace = covariance_.trace();
+        if (has_last_inertial_) {
+            propagateToStampUsingInertialPair(inertial, inertial.stamp_sec);
+        } else {
+            propagateToStamp(inertial, inertial.stamp_sec);
+            last_inertial_ = inertial;
+            has_last_inertial_ = true;
+        }
     }
 
     PoseUpdateResult updatePose(const PoseMeasurement& pose) {
         PoseUpdateResult result;
         if (!pose3_inertial_eskf_detail::validPoseMeasurement(pose)) {
+            result.reject_reason = PoseFusionRejectReason::kInvalidInput;
+            stampResultHealth(result);
+            return result;
+        }
+        if (pose.time_jump) {
+            vrpn_health_.reset();
+            result.time_alignment_rejected = true;
+            result.reject_reason = PoseFusionRejectReason::kTimeAlignment;
+            vrpn_health_.recordRejected();
+            stampResultHealth(result);
+            return result;
+        }
+        // Pose timestamps are expected to already be on the client-local sensor timeline.
+        // Fusion is rate-agnostic: old local samples are rejected, future samples are
+        // reached by propagating with the latest IMU over the actual timestamp delta.
+        if (!state_.initialized) {
+            initializeFromPose(pose, has_last_inertial_ ? &last_inertial_ : nullptr);
+            result.accepted = state_.initialized;
+            stampResultHealth(result);
+            return result;
+        }
+        if (pose.stamp_sec + kMinDt < state_.last_inertial_stamp_sec) {
+            result.time_alignment_rejected = true;
+            result.reject_reason = PoseFusionRejectReason::kTimeAlignment;
+            vrpn_health_.recordRejected();
+            stampResultHealth(result);
+            return result;
+        }
+        if (pose.stamp_sec > state_.last_inertial_stamp_sec + kMinDt) {
+            if (!has_last_inertial_ || !propagateToStamp(last_inertial_, pose.stamp_sec)) {
+                result.time_alignment_rejected = true;
+                result.reject_reason = PoseFusionRejectReason::kTimeAlignment;
+                vrpn_health_.recordRejected();
+                stampResultHealth(result);
+                return result;
+            }
+        }
+        return updatePoseAtCurrentState(pose);
+    }
+
+    const RigidBodyState& state() const { return state_; }
+    const ErrorCovariance& covariance() const { return covariance_; }
+    bool initialized() const { return state_.initialized; }
+    bool hasCorrectedBodyPose() const { return has_corrected_body_pose_; }
+    const Pose3& correctedBodyPose() const { return corrected_body_pose_; }
+    bool hasRawProjectedBodyPose() const { return has_raw_projected_body_pose_; }
+    const Pose3& rawProjectedBodyPose() const { return raw_projected_body_pose_; }
+    VrpnObservationState vrpnObservationState() const { return vrpn_health_.state(); }
+    FilterHealth filterHealth() const {
+        if (!state_.initialized) {
+            return FilterHealth::kLost;
+        }
+        if (!covariance_.allFinite()) {
+            return FilterHealth::kLost;
+        }
+        const double trace = covariance_.trace();
+        if (!std::isfinite(trace)) {
+            return FilterHealth::kLost;
+        }
+        if (vrpn_health_.state() == VrpnObservationState::kFault) {
+            return FilterHealth::kImuOnly;
+        }
+        if (trace > config_.covariance_high_threshold) {
+            return FilterHealth::kDegraded;
+        }
+        switch (vrpn_health_.state()) {
+            case VrpnObservationState::kTrusted:
+                return FilterHealth::kNominal;
+            case VrpnObservationState::kSuspected:
+            case VrpnObservationState::kRecovery:
+                return FilterHealth::kDegraded;
+            case VrpnObservationState::kFault:
+                return FilterHealth::kImuOnly;
+        }
+        return FilterHealth::kLost;
+    }
+    double vrpnInnovationWindowChiSquare() const { return vrpn_health_.chiSquareWindowSum(); }
+    double lastFusedPoseStampS() const { return last_fused_pose_stamp_sec_; }
+
+  private:
+    PoseUpdateResult updatePoseAtCurrentState(const PoseMeasurement& pose) {
+        PoseUpdateResult result;
+        if (!pose3_inertial_eskf_detail::validPoseMeasurement(pose)) {
+            result.reject_reason = PoseFusionRejectReason::kInvalidInput;
+            stampResultHealth(result);
+            return result;
+        }
+        if (!state_.initialized) {
+            initializeFromPose(pose, has_last_inertial_ ? &last_inertial_ : nullptr);
+            result.accepted = state_.initialized;
+            stampResultHealth(result);
             return result;
         }
 
@@ -264,28 +376,59 @@ class Pose3InertialEskf {
         if (result.position_innovation_norm > config_.innovation_position_gate_m ||
             result.orientation_innovation_norm > config_.innovation_orientation_gate_rad) {
             result.innovation_rejected = true;
+            result.reject_reason = PoseFusionRejectReason::kInnovationGate;
             state_.last_pose_stamp_sec = pose.stamp_sec;
+            vrpn_health_.recordRejected();
+            stampResultHealth(result);
             return result;
         }
 
-        if (!state_.initialized) {
-            corrected_body_pose_ = bodyPoseFromMarkerPose(marker_world, config_.body_to_marker);
-            has_corrected_body_pose_ = true;
-            return result;
-        }
-
-        const MeasurementMatrix H = numericalMeasurementJacobian(predicted_marker, marker_world);
+        const MeasurementMatrix H = measurementJacobian(predicted_marker, innovation);
         const MeasurementCovariance R = measurementCovariance();
         const MeasurementCovariance S = H * covariance_ * H.transpose() + R;
-        const Eigen::LDLT<MeasurementCovariance> ldlt(S);
+        Eigen::LDLT<MeasurementCovariance> ldlt;
+        ldlt.compute(S);
         if (ldlt.info() != Eigen::Success || !S.allFinite()) {
+            result.reject_reason = PoseFusionRejectReason::kNumericalFailure;
+            vrpn_health_.recordRejected();
+            stampResultHealth(result);
             return result;
         }
 
         result.mahalanobis_distance = innovation.transpose() * ldlt.solve(innovation);
+        if (!std::isfinite(result.mahalanobis_distance)) {
+            result.reject_reason = PoseFusionRejectReason::kNumericalFailure;
+            vrpn_health_.recordRejected();
+            stampResultHealth(result);
+            return result;
+        }
+        if (result.mahalanobis_distance > config_.pose_nis_gate) {
+            result.innovation_rejected = true;
+            result.reject_reason = PoseFusionRejectReason::kInnovationGate;
+            state_.last_pose_stamp_sec = pose.stamp_sec;
+            vrpn_health_.recordRejected();
+            stampResultHealth(result);
+            return result;
+        }
+        if (vrpn_health_.state() == VrpnObservationState::kFault) {
+            vrpn_health_.recordRecoveryCandidate();
+            result.reject_reason = PoseFusionRejectReason::kVrpnFault;
+            stampResultHealth(result);
+            return result;
+        }
+        vrpn_health_.recordAccepted(result.mahalanobis_distance);
+
         const Eigen::Matrix<double, kErrorStateDim, 6> K =
             covariance_ * H.transpose() * ldlt.solve(MeasurementCovariance::Identity());
-        const ErrorVector delta = K * innovation;
+        // H is d residual / d error_state for se3Error(predicted, measured), so the correction
+        // moves against the residual gradient.
+        const ErrorVector delta = -K * innovation;
+        if (!delta.allFinite()) {
+            result.reject_reason = PoseFusionRejectReason::kNumericalFailure;
+            vrpn_health_.recordRejected();
+            stampResultHealth(result);
+            return result;
+        }
         injectError(delta);
 
         const ErrorCovariance identity = ErrorCovariance::Identity();
@@ -293,29 +436,23 @@ class Pose3InertialEskf {
         covariance_ = 0.5 * (covariance_ + covariance_.transpose());
         state_.last_pose_stamp_sec = pose.stamp_sec;
         state_.covariance_trace = covariance_.trace();
-        corrected_body_pose_ = bodyPoseFromMarkerPose(marker_world, state_.body_to_marker);
+        corrected_body_pose_ = bodyPoseFromState(state_);
+        raw_projected_body_pose_ = bodyPoseFromMarkerPose(marker_world, state_.body_to_marker);
         has_corrected_body_pose_ = true;
+        has_raw_projected_body_pose_ = true;
+        last_fused_pose_stamp_sec_ = pose.stamp_sec;
         result.accepted = true;
+        stampResultHealth(result);
         return result;
     }
 
-    const RigidBodyState& state() const { return state_; }
-    const ErrorCovariance& covariance() const { return covariance_; }
-    bool initialized() const { return state_.initialized; }
-    bool hasCorrectedBodyPose() const { return has_corrected_body_pose_; }
-    const Pose3& correctedBodyPose() const { return corrected_body_pose_; }
-
-  private:
     void resetCovariance() {
-        covariance_.setIdentity();
-        covariance_ *= 1.0e-6;
+        covariance_.setZero();
         covariance_.block<3, 3>(0, 0).diagonal().setConstant(config_.initial_position_variance);
         covariance_.block<3, 3>(3, 3).diagonal().setConstant(config_.initial_velocity_variance);
         covariance_.block<3, 3>(6, 6).diagonal().setConstant(config_.initial_orientation_variance);
         covariance_.block<3, 3>(9, 9).diagonal().setConstant(config_.initial_gyro_bias_variance);
         covariance_.block<3, 3>(12, 12).diagonal().setConstant(config_.initial_accel_bias_variance);
-        covariance_.block<3, 3>(15, 15).diagonal().setConstant(config_.initial_extrinsic_position_variance);
-        covariance_.block<3, 3>(18, 18).diagonal().setConstant(config_.initial_extrinsic_orientation_variance);
         state_.covariance_trace = covariance_.trace();
     }
 
@@ -334,6 +471,13 @@ class Pose3InertialEskf {
         return compose(body_pose, state.body_to_marker);
     }
 
+    static Pose3 bodyPoseFromState(const RigidBodyState& state) {
+        Pose3 body_pose;
+        body_pose.position = state.position;
+        body_pose.orientation = state.orientation;
+        return body_pose;
+    }
+
     static MeasurementVector measurementResidual(const Pose3& predicted_marker, const Pose3& measured_marker) {
         return pose3_inertial_eskf_detail::normalizedInnovation(se3Error(predicted_marker, measured_marker));
     }
@@ -346,23 +490,28 @@ class Pose3InertialEskf {
         return R;
     }
 
-    MeasurementMatrix numericalMeasurementJacobian(const Pose3& nominal_prediction,
-                                                   const Pose3& measured_marker) const {
+    MeasurementMatrix measurementJacobian(const Pose3& predicted_marker,
+                                          const MeasurementVector& innovation) const {
         MeasurementMatrix H;
         H.setZero();
-        const MeasurementVector nominal_residual = measurementResidual(nominal_prediction, measured_marker);
-        for (int i = 0; i < kErrorStateDim; ++i) {
-            ErrorVector delta = ErrorVector::Zero();
-            delta(i) = kJacobianEpsilon;
-            RigidBodyState perturbed = state_;
-            injectError(delta, perturbed);
-            const MeasurementVector perturbed_residual =
-                measurementResidual(predictedMarkerPose(perturbed), measured_marker);
-            H.col(i) = -(perturbed_residual - nominal_residual) / kJacobianEpsilon;
-        }
-        if (!config_.estimate_extrinsic) {
-            H.block<6, 6>(0, 15).setZero();
-        }
+        // Jacobian of se3Error(predictedMarker(state), measuredMarker) with the same right
+        // perturbation convention used by injectError().
+        const Eigen::Matrix3d marker_rotation_transpose =
+            normalizedQuaternion(predicted_marker.orientation).toRotationMatrix().transpose();
+        const Eigen::Matrix3d extrinsic_rotation_transpose =
+            normalizedQuaternion(state_.body_to_marker.orientation).toRotationMatrix().transpose();
+        const Eigen::Vector3d residual_position = innovation.head<3>();
+        const Eigen::Matrix3d residual_position_skew =
+            pose3_inertial_eskf_detail::skewMatrix(residual_position);
+        const Eigen::Matrix3d marker_offset_skew =
+            pose3_inertial_eskf_detail::skewMatrix(state_.body_to_marker.position);
+
+        H.block<3, 3>(0, 0) = -marker_rotation_transpose;
+        H.block<3, 3>(0, 6) =
+            residual_position_skew * extrinsic_rotation_transpose +
+            extrinsic_rotation_transpose * marker_offset_skew;
+        H.block<3, 3>(3, 6) = -extrinsic_rotation_transpose;
+
         return H;
     }
 
@@ -387,13 +536,6 @@ class Pose3InertialEskf {
                                                    config_.gyro_bias_random_walk_std * dt);
         Q.block<3, 3>(12, 12).diagonal().setConstant(config_.accel_bias_random_walk_std *
                                                      config_.accel_bias_random_walk_std * dt);
-        if (config_.estimate_extrinsic) {
-            Q.block<3, 3>(15, 15).diagonal().setConstant(config_.extrinsic_position_random_walk_std *
-                                                         config_.extrinsic_position_random_walk_std * dt);
-            Q.block<3, 3>(18, 18).diagonal().setConstant(config_.extrinsic_orientation_random_walk_std *
-                                                         config_.extrinsic_orientation_random_walk_std * dt);
-        }
-
         covariance_ = F * covariance_ * F.transpose() + Q;
         covariance_ = 0.5 * (covariance_ + covariance_.transpose());
     }
@@ -416,21 +558,128 @@ class Pose3InertialEskf {
         state.orientation = normalizedQuaternion(state.orientation * expMap(delta.segment<3>(6)));
         state.gyro_bias += delta.segment<3>(9);
         state.accel_bias += delta.segment<3>(12);
-        if (config_.estimate_extrinsic) {
-            state.body_to_marker.position += delta.segment<3>(15);
-            state.body_to_marker.orientation =
-                normalizedQuaternion(state.body_to_marker.orientation * expMap(delta.segment<3>(18)));
+    }
+
+    void integrateInertialStepWithReadings(const Eigen::Vector3d& angular_velocity,
+                                           const Eigen::Vector3d& linear_acceleration, double dt) {
+        state_.angular_velocity = angular_velocity - state_.gyro_bias;
+        const Eigen::Vector3d accel_body = linear_acceleration - state_.accel_bias;
+        const Eigen::Quaterniond old_orientation = state_.orientation;
+        const Eigen::Quaterniond mid_orientation =
+            normalizedQuaternion(old_orientation * expMap(0.5 * state_.angular_velocity * dt));
+        const Eigen::Matrix3d rotation = mid_orientation.toRotationMatrix();
+        const Eigen::Vector3d acceleration_world = rotation * accel_body + state_.gravity;
+        state_.position += state_.velocity * dt + 0.5 * acceleration_world * dt * dt;
+        state_.velocity += acceleration_world * dt;
+        state_.orientation = normalizedQuaternion(old_orientation * expMap(state_.angular_velocity * dt));
+        propagateCovariance(accel_body, rotation, dt);
+        state_.covariance_trace = covariance_.trace();
+    }
+
+    void integrateInertialStep(const InertialSample& inertial, double dt) {
+        integrateInertialStepWithReadings(inertial.angular_velocity, inertial.linear_acceleration, dt);
+    }
+
+    void integrateInertialStepMidpoint(const InertialSample& previous, const InertialSample& current, double dt) {
+        integrateInertialStepWithReadings(0.5 * (previous.angular_velocity + current.angular_velocity),
+                                          0.5 * (previous.linear_acceleration + current.linear_acceleration), dt);
+    }
+
+    bool propagateToStamp(const InertialSample& inertial, double target_stamp_sec) {
+        if (!std::isfinite(target_stamp_sec) || target_stamp_sec <= state_.last_inertial_stamp_sec + kMinDt) {
+            return false;
         }
+        double remaining = target_stamp_sec - state_.last_inertial_stamp_sec;
+        while (remaining > kMinDt) {
+            const double dt = std::min(remaining, config_.max_propagation_dt_s);
+            integrateInertialStep(inertial, dt);
+            state_.last_inertial_stamp_sec += dt;
+            remaining = target_stamp_sec - state_.last_inertial_stamp_sec;
+        }
+        // Snap to the requested timestamp after segmented integration to avoid accumulating sub-kMinDt drift.
+        state_.last_inertial_stamp_sec = target_stamp_sec;
+        state_.covariance_trace = covariance_.trace();
+        corrected_body_pose_ = bodyPoseFromState(state_);
+        has_corrected_body_pose_ = true;
+        return true;
+    }
+
+    InertialSample interpolatedInertialSample(const InertialSample& start, const InertialSample& end,
+                                              double stamp_sec) const {
+        InertialSample result = end;
+        result.stamp_sec = stamp_sec;
+        const double duration = end.stamp_sec - start.stamp_sec;
+        if (!std::isfinite(duration) || duration <= kMinDt) {
+            return result;
+        }
+        const double ratio = std::max(0.0, std::min(1.0, (stamp_sec - start.stamp_sec) / duration));
+        result.angular_velocity = start.angular_velocity + ratio * (end.angular_velocity - start.angular_velocity);
+        result.linear_acceleration =
+            start.linear_acceleration + ratio * (end.linear_acceleration - start.linear_acceleration);
+        return result;
+    }
+
+    bool propagateToStampUsingInertialPair(const InertialSample& next_inertial, double target_stamp_sec) {
+        if (!has_last_inertial_) {
+            const bool propagated = propagateToStamp(next_inertial, target_stamp_sec);
+            if (propagated && std::fabs(target_stamp_sec - next_inertial.stamp_sec) <= kMinDt) {
+                last_inertial_ = next_inertial;
+                has_last_inertial_ = true;
+            }
+            return propagated;
+        }
+        if (!std::isfinite(target_stamp_sec) || target_stamp_sec <= state_.last_inertial_stamp_sec + kMinDt) {
+            return false;
+        }
+        if (next_inertial.stamp_sec <= last_inertial_.stamp_sec + kMinDt) {
+            return propagateToStamp(next_inertial, target_stamp_sec);
+        }
+        while (target_stamp_sec > state_.last_inertial_stamp_sec + kMinDt) {
+            const double segment_end =
+                std::min(target_stamp_sec, state_.last_inertial_stamp_sec + config_.max_propagation_dt_s);
+            InertialSample segment_inertial =
+                std::fabs(segment_end - next_inertial.stamp_sec) <= kMinDt
+                    ? next_inertial
+                    : interpolatedInertialSample(last_inertial_, next_inertial, segment_end);
+            const double dt = segment_end - state_.last_inertial_stamp_sec;
+            if (!std::isfinite(dt) || dt <= kMinDt) {
+                return false;
+            }
+            integrateInertialStepMidpoint(last_inertial_, segment_inertial, dt);
+            state_.last_inertial_stamp_sec = segment_end;
+            last_inertial_ = segment_inertial;
+        }
+        if (std::fabs(target_stamp_sec - next_inertial.stamp_sec) <= kMinDt) {
+            last_inertial_ = next_inertial;
+        }
+        state_.last_inertial_stamp_sec = target_stamp_sec;
+        state_.covariance_trace = covariance_.trace();
+        corrected_body_pose_ = bodyPoseFromState(state_);
+        has_corrected_body_pose_ = true;
+        return true;
+    }
+
+    void stampResultHealth(PoseUpdateResult& result) const {
+        result.vrpn_observation_state = vrpn_health_.state();
+        result.filter_health = filterHealth();
+        result.innovation_window_chi_square = vrpn_health_.chiSquareWindowSum();
     }
 
     static constexpr double kMinDt = 1.0e-5;
-    static constexpr double kJacobianEpsilon = 1.0e-6;
 
     Pose3InertialEskfConfig config_{};
     RigidBodyState state_{};
     ErrorCovariance covariance_{ErrorCovariance::Identity()};
     Pose3 corrected_body_pose_{};
+    Pose3 raw_projected_body_pose_{};
     bool has_corrected_body_pose_{false};
+    bool has_raw_projected_body_pose_{false};
+    InertialSample last_inertial_{};
+    bool has_last_inertial_{false};
+    ObservationHealthTracker vrpn_health_{};
+    double last_fused_pose_stamp_sec_{0.0};
+
+    friend struct Pose3InertialEskfTestAccess;
 };
 
 } // namespace xgc2_math

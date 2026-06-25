@@ -1,11 +1,13 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <cmath>
 
 #include <Eigen/Cholesky>
 #include <Eigen/Core>
 
+#include "xgc2_math/estimation/health.hpp"
 #include "xgc2_math/geometry/se2.hpp"
 
 namespace xgc2_math {
@@ -34,6 +36,8 @@ struct Pose2InertialEskfConfig {
     double initial_accel_bias_variance{0.1};
     double initial_extrinsic_position_variance{1.0e-8};
     double initial_extrinsic_yaw_variance{1.0e-8};
+    std::size_t inertial_buffer_capacity{512};
+    ObservationHealthConfig vrpn_health{};
 };
 
 struct PlanarInertialSample {
@@ -65,9 +69,14 @@ struct PlanarInertialPropagationResult {
 struct PlanarPoseUpdateResult {
     bool accepted{false};
     bool innovation_rejected{false};
+    bool time_alignment_rejected{false};
     double position_innovation_norm{0.0};
     double yaw_innovation_abs{0.0};
     double mahalanobis_distance{0.0};
+    double innovation_window_chi_square{0.0};
+    VrpnObservationState vrpn_observation_state{VrpnObservationState::kTrusted};
+    FilterHealth filter_health{FilterHealth::kLost};
+    PoseFusionRejectReason reject_reason{PoseFusionRejectReason::kNone};
 };
 
 namespace pose2_inertial_eskf_detail {
@@ -155,6 +164,7 @@ class Pose2InertialEskf {
 
     void setConfig(const Pose2InertialEskfConfig& config) {
         config_ = normalized(config);
+        vrpn_health_.setConfig(config_.vrpn_health);
         reset();
     }
 
@@ -171,7 +181,11 @@ class Pose2InertialEskf {
         covariance_.block<2, 2>(8, 8).diagonal().setConstant(config_.initial_extrinsic_position_variance);
         covariance_(10, 10) = config_.initial_extrinsic_yaw_variance;
         corrected_body_pose_ = Pose2{};
+        raw_projected_body_pose_ = Pose2{};
         has_corrected_body_pose_ = false;
+        has_raw_projected_body_pose_ = false;
+        vrpn_health_.reset();
+        last_fused_pose_stamp_sec_ = 0.0;
     }
 
     void initializeFromPose(const PlanarPoseMeasurement& pose, const PlanarInertialSample* inertial = nullptr) {
@@ -193,48 +207,81 @@ class Pose2InertialEskf {
                                                                                               : pose.stamp_sec;
         state_.covariance_trace = covariance_.trace();
         state_.initialized = true;
-        corrected_body_pose_ = body_world;
+        corrected_body_pose_ = bodyPoseFromState(state_);
+        raw_projected_body_pose_ = body_world;
         has_corrected_body_pose_ = true;
+        has_raw_projected_body_pose_ = true;
+        vrpn_health_.reset();
+        last_fused_pose_stamp_sec_ = pose.stamp_sec;
     }
 
     PlanarInertialPropagationResult propagateInertial(const PlanarInertialSample& inertial) {
         PlanarInertialPropagationResult result;
-        if (!state_.initialized || !pose2_inertial_eskf_detail::validInertialSample(inertial)) {
+        if (!pose2_inertial_eskf_detail::validInertialSample(inertial)) {
+            return result;
+        }
+
+        if (!state_.initialized) {
+            state_.last_inertial_stamp_sec = inertial.stamp_sec;
+            result.initialized_stamp = true;
             return result;
         }
 
         const double dt = inertial.stamp_sec - state_.last_inertial_stamp_sec;
         if (!std::isfinite(dt) || dt <= kMinDt) {
-            state_.last_inertial_stamp_sec = inertial.stamp_sec;
-            result.initialized_stamp = true;
-            return result;
-        }
-        if (dt > config_.max_propagation_dt_s) {
-            state_.last_inertial_stamp_sec = inertial.stamp_sec;
-            inflateCovariance(config_.max_propagation_dt_s);
-            result.initialized_stamp = true;
             return result;
         }
 
-        const double omega_z = inertial.angular_velocity_z - state_.gyro_bias_z;
-        const Eigen::Vector2d accel_body = inertial.linear_acceleration - state_.accel_bias;
-        const Eigen::Matrix2d rotation = rotationMatrix2(state_.yaw);
-        const Eigen::Vector2d accel_world = rotation * accel_body;
-
-        state_.position += state_.velocity * dt + 0.5 * accel_world * dt * dt;
-        state_.velocity += accel_world * dt;
-        state_.yaw = normalizeAngle(state_.yaw + omega_z * dt);
-        state_.yaw_rate = omega_z;
-        state_.last_inertial_stamp_sec = inertial.stamp_sec;
-        propagateCovariance(accel_body, dt);
-        state_.covariance_trace = covariance_.trace();
+        propagateToStamp(inertial, inertial.stamp_sec);
         result.accepted = true;
         return result;
     }
 
     PlanarPoseUpdateResult updatePose(const PlanarPoseMeasurement& pose) {
+        if (state_.initialized && pose2_inertial_eskf_detail::validPoseMeasurement(pose) &&
+            pose.stamp_sec + kMinDt < state_.last_inertial_stamp_sec) {
+            PlanarPoseUpdateResult result;
+            result.time_alignment_rejected = true;
+            result.reject_reason = PoseFusionRejectReason::kTimeAlignment;
+            vrpn_health_.recordRejected();
+            stampResultHealth(result);
+            return result;
+        }
+        return updatePoseAtCurrentState(pose);
+    }
+
+    const PlanarRigidBodyState& state() const { return state_; }
+    const ErrorCovariance& covariance() const { return covariance_; }
+    bool initialized() const { return state_.initialized; }
+    bool hasCorrectedBodyPose() const { return has_corrected_body_pose_; }
+    const Pose2& correctedBodyPose() const { return corrected_body_pose_; }
+    bool hasRawProjectedBodyPose() const { return has_raw_projected_body_pose_; }
+    const Pose2& rawProjectedBodyPose() const { return raw_projected_body_pose_; }
+    VrpnObservationState vrpnObservationState() const { return vrpn_health_.state(); }
+    FilterHealth filterHealth() const {
+        if (!state_.initialized) {
+            return FilterHealth::kLost;
+        }
+        switch (vrpn_health_.state()) {
+            case VrpnObservationState::kTrusted:
+                return FilterHealth::kNominal;
+            case VrpnObservationState::kSuspected:
+            case VrpnObservationState::kRecovery:
+                return FilterHealth::kDegraded;
+            case VrpnObservationState::kFault:
+                return FilterHealth::kImuOnly;
+        }
+        return FilterHealth::kLost;
+    }
+    double vrpnInnovationWindowChiSquare() const { return vrpn_health_.chiSquareWindowSum(); }
+    double lastFusedPoseStampS() const { return last_fused_pose_stamp_sec_; }
+
+  private:
+    PlanarPoseUpdateResult updatePoseAtCurrentState(const PlanarPoseMeasurement& pose) {
         PlanarPoseUpdateResult result;
         if (!pose2_inertial_eskf_detail::validPoseMeasurement(pose)) {
+            result.reject_reason = PoseFusionRejectReason::kInvalidInput;
+            stampResultHealth(result);
             return result;
         }
 
@@ -247,22 +294,56 @@ class Pose2InertialEskf {
         if (result.position_innovation_norm > config_.innovation_position_gate_m ||
             result.yaw_innovation_abs > config_.innovation_yaw_gate_rad) {
             result.innovation_rejected = true;
+            result.reject_reason = PoseFusionRejectReason::kInnovationGate;
             state_.last_pose_stamp_sec = pose.stamp_sec;
+            vrpn_health_.recordRejected();
+            stampResultHealth(result);
             return result;
         }
 
-        const MeasurementMatrix H = numericalMeasurementJacobian(predicted_marker, marker_world);
+        if (!state_.initialized) {
+            raw_projected_body_pose_ = bodyPoseFromMarkerPose(marker_world, config_.body_to_marker);
+            has_raw_projected_body_pose_ = true;
+            stampResultHealth(result);
+            return result;
+        }
+
+        const MeasurementMatrix H = measurementJacobian(predicted_marker, innovation);
         const MeasurementCovariance R = measurementCovariance();
         const MeasurementCovariance S = H * covariance_ * H.transpose() + R;
-        const Eigen::LDLT<MeasurementCovariance> ldlt(S);
+        Eigen::LDLT<MeasurementCovariance> ldlt;
+        ldlt.compute(S);
         if (ldlt.info() != Eigen::Success || !S.allFinite()) {
+            result.reject_reason = PoseFusionRejectReason::kNumericalFailure;
+            vrpn_health_.recordRejected();
+            stampResultHealth(result);
             return result;
         }
 
         result.mahalanobis_distance = innovation.transpose() * ldlt.solve(innovation);
+        if (!std::isfinite(result.mahalanobis_distance)) {
+            result.reject_reason = PoseFusionRejectReason::kNumericalFailure;
+            vrpn_health_.recordRejected();
+            stampResultHealth(result);
+            return result;
+        }
+        const bool vrpn_fault = vrpn_health_.state() == VrpnObservationState::kFault;
+        vrpn_health_.recordAccepted(result.mahalanobis_distance);
+        if (vrpn_fault) {
+            result.reject_reason = PoseFusionRejectReason::kVrpnFault;
+            stampResultHealth(result);
+            return result;
+        }
+
         const Eigen::Matrix<double, kErrorStateDim, 3> K =
             covariance_ * H.transpose() * ldlt.solve(MeasurementCovariance::Identity());
         const ErrorVector delta = K * innovation;
+        if (!delta.allFinite()) {
+            result.reject_reason = PoseFusionRejectReason::kNumericalFailure;
+            vrpn_health_.recordRejected();
+            stampResultHealth(result);
+            return result;
+        }
         injectError(delta);
 
         const ErrorCovariance identity = ErrorCovariance::Identity();
@@ -270,19 +351,16 @@ class Pose2InertialEskf {
         covariance_ = 0.5 * (covariance_ + covariance_.transpose());
         state_.last_pose_stamp_sec = pose.stamp_sec;
         state_.covariance_trace = covariance_.trace();
-        corrected_body_pose_ = bodyPoseFromMarkerPose(marker_world, state_.body_to_marker);
+        corrected_body_pose_ = bodyPoseFromState(state_);
+        raw_projected_body_pose_ = bodyPoseFromMarkerPose(marker_world, state_.body_to_marker);
         has_corrected_body_pose_ = true;
+        has_raw_projected_body_pose_ = true;
+        last_fused_pose_stamp_sec_ = pose.stamp_sec;
         result.accepted = true;
+        stampResultHealth(result);
         return result;
     }
 
-    const PlanarRigidBodyState& state() const { return state_; }
-    const ErrorCovariance& covariance() const { return covariance_; }
-    bool initialized() const { return state_.initialized; }
-    bool hasCorrectedBodyPose() const { return has_corrected_body_pose_; }
-    const Pose2& correctedBodyPose() const { return corrected_body_pose_; }
-
-  private:
     Pose2 markerPoseInWorld(const Pose2& raw_marker_pose) const {
         return compose(config_.measurement_frame_to_world, raw_marker_pose);
     }
@@ -298,6 +376,13 @@ class Pose2InertialEskf {
         return compose(body_pose, state.body_to_marker);
     }
 
+    static Pose2 bodyPoseFromState(const PlanarRigidBodyState& state) {
+        Pose2 body_pose;
+        body_pose.position = state.position;
+        body_pose.yaw = state.yaw;
+        return body_pose;
+    }
+
     MeasurementCovariance measurementCovariance() const {
         MeasurementCovariance R = MeasurementCovariance::Zero();
         R(0, 0) = config_.pose_position_noise_std * config_.pose_position_noise_std;
@@ -306,30 +391,33 @@ class Pose2InertialEskf {
         return R;
     }
 
-    MeasurementMatrix numericalMeasurementJacobian(const Pose2& nominal_prediction,
-                                                   const Pose2& measured_marker) const {
+    MeasurementMatrix measurementJacobian(const Pose2& predicted_marker,
+                                          const Eigen::Vector3d& innovation) const {
         MeasurementMatrix H;
         H.setZero();
-        const Eigen::Vector3d nominal_residual =
-            pose2_inertial_eskf_detail::normalizedInnovation(se2Error(nominal_prediction, measured_marker));
-        for (int i = 0; i < kErrorStateDim; ++i) {
-            ErrorVector delta = ErrorVector::Zero();
-            delta(i) = kJacobianEpsilon;
-            PlanarRigidBodyState perturbed = state_;
-            injectError(delta, perturbed);
-            const Eigen::Vector3d perturbed_residual = pose2_inertial_eskf_detail::normalizedInnovation(
-                se2Error(predictedMarkerPose(perturbed), measured_marker));
-            H.col(i) = -(perturbed_residual - nominal_residual) / kJacobianEpsilon;
-        }
-        if (!config_.estimate_extrinsic) {
-            H.block<3, 3>(0, 8).setZero();
+        const Eigen::Matrix2d marker_rotation_transpose = rotationMatrix2(predicted_marker.yaw).transpose();
+        const Eigen::Matrix2d extrinsic_rotation_transpose =
+            rotationMatrix2(state_.body_to_marker.yaw).transpose();
+        const Eigen::Matrix2d yaw_jacobian = pose2_inertial_eskf_detail::yawDerivativeMatrix();
+        const Eigen::Vector2d residual_position = innovation.head<2>();
+
+        H.block<2, 2>(0, 0) = marker_rotation_transpose;
+        H.block<2, 1>(0, 4) =
+            yaw_jacobian * residual_position +
+            extrinsic_rotation_transpose * yaw_jacobian * state_.body_to_marker.position;
+        H(2, 4) = 1.0;
+
+        if (config_.estimate_extrinsic) {
+            H.block<2, 2>(0, 8) = extrinsic_rotation_transpose;
+            H.block<2, 1>(0, 10) = yaw_jacobian * residual_position;
+            H(2, 10) = 1.0;
         }
         return H;
     }
 
-    void propagateCovariance(const Eigen::Vector2d& accel_body, double dt) {
+    void propagateCovariance(const Eigen::Vector2d& accel_body, double yaw_for_linearization, double dt) {
         ErrorCovariance F = ErrorCovariance::Identity();
-        const Eigen::Matrix2d rotation = rotationMatrix2(state_.yaw);
+        const Eigen::Matrix2d rotation = rotationMatrix2(yaw_for_linearization);
         const Eigen::Vector2d accel_yaw_derivative =
             rotation * pose2_inertial_eskf_detail::yawDerivativeMatrix() * accel_body;
 
@@ -383,14 +471,56 @@ class Pose2InertialEskf {
         }
     }
 
+    void integrateInertialStep(const PlanarInertialSample& inertial, double dt) {
+        const double omega_z = inertial.angular_velocity_z - state_.gyro_bias_z;
+        const Eigen::Vector2d accel_body = inertial.linear_acceleration - state_.accel_bias;
+        const double yaw_mid = normalizeAngle(state_.yaw + 0.5 * omega_z * dt);
+        const Eigen::Matrix2d rotation = rotationMatrix2(yaw_mid);
+        const Eigen::Vector2d accel_world = rotation * accel_body;
+
+        state_.position += state_.velocity * dt + 0.5 * accel_world * dt * dt;
+        state_.velocity += accel_world * dt;
+        state_.yaw = normalizeAngle(state_.yaw + omega_z * dt);
+        state_.yaw_rate = omega_z;
+        propagateCovariance(accel_body, yaw_mid, dt);
+        state_.covariance_trace = covariance_.trace();
+    }
+
+    bool propagateToStamp(const PlanarInertialSample& inertial, double target_stamp_sec) {
+        if (!std::isfinite(target_stamp_sec) || target_stamp_sec <= state_.last_inertial_stamp_sec + kMinDt) {
+            return false;
+        }
+        double remaining = target_stamp_sec - state_.last_inertial_stamp_sec;
+        while (remaining > kMinDt) {
+            const double dt = std::min(remaining, config_.max_propagation_dt_s);
+            integrateInertialStep(inertial, dt);
+            state_.last_inertial_stamp_sec += dt;
+            remaining = target_stamp_sec - state_.last_inertial_stamp_sec;
+        }
+        state_.last_inertial_stamp_sec = target_stamp_sec;
+        state_.covariance_trace = covariance_.trace();
+        corrected_body_pose_ = bodyPoseFromState(state_);
+        has_corrected_body_pose_ = true;
+        return true;
+    }
+
+    void stampResultHealth(PlanarPoseUpdateResult& result) const {
+        result.vrpn_observation_state = vrpn_health_.state();
+        result.filter_health = filterHealth();
+        result.innovation_window_chi_square = vrpn_health_.chiSquareWindowSum();
+    }
+
     static constexpr double kMinDt = 1.0e-5;
-    static constexpr double kJacobianEpsilon = 1.0e-6;
 
     Pose2InertialEskfConfig config_{};
     PlanarRigidBodyState state_{};
     ErrorCovariance covariance_{ErrorCovariance::Identity()};
     Pose2 corrected_body_pose_{};
+    Pose2 raw_projected_body_pose_{};
     bool has_corrected_body_pose_{false};
+    bool has_raw_projected_body_pose_{false};
+    ObservationHealthTracker vrpn_health_{};
+    double last_fused_pose_stamp_sec_{0.0};
 };
 
 } // namespace xgc2_math
