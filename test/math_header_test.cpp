@@ -4,7 +4,23 @@
 #include <limits>
 #include <string>
 
-#include <math.hpp>
+#include <xgc2_math/math.hpp>
+
+enum class TestPipelineStatus {
+    kReady,
+    kBlocked,
+};
+
+namespace xgc2_math {
+
+template <> struct StatusRegistry<::TestPipelineStatus> {
+    static constexpr std::array<StatusDescriptor<::TestPipelineStatus>, 2> statuses{{
+        {::TestPipelineStatus::kReady, "ready"},
+        {::TestPipelineStatus::kBlocked, "blocked"},
+    }};
+};
+
+} // namespace xgc2_math
 
 namespace {
 
@@ -53,9 +69,19 @@ void testSlewRateLimiter() {
 }
 
 void testStatusHelpers() {
-    expect(xgc2_math::measurementAccepted(xgc2_math::SampleStatus::kAccepted));
-    expect(xgc2_math::measurementHeld(xgc2_math::SampleStatus::kHeldOutlier));
-    expect(std::string(xgc2_math::toString(xgc2_math::SampleStatus::kHeldInvalidDt)) == "held_invalid_dt");
+    const auto& time_delta_statuses = xgc2_math::registeredStatuses<xgc2_math::TimeDeltaStatus>();
+    expect(time_delta_statuses.size() == 5);
+    expect(time_delta_statuses[0].status == xgc2_math::TimeDeltaStatus::kInitialized);
+    expect(std::string(xgc2_math::toString(xgc2_math::TimeDeltaStatus::kHeldInvalidDt)) == "held_invalid_dt");
+
+    const auto* invalid_dt = xgc2_math::statusDescriptor(xgc2_math::TimeDeltaStatus::kHeldInvalidDt);
+    expect(invalid_dt != nullptr);
+    expect(std::string(invalid_dt->name) == "held_invalid_dt");
+
+    const auto& test_statuses = xgc2_math::registeredStatuses<TestPipelineStatus>();
+    expect(test_statuses.size() == 2);
+    expect(std::string(xgc2_math::toString(TestPipelineStatus::kReady)) == "ready");
+    expect(std::string(xgc2_math::toString(TestPipelineStatus::kBlocked)) == "blocked");
 }
 
 void testTimeDeltaGuard() {
@@ -65,18 +91,68 @@ void testTimeDeltaGuard() {
 
     xgc2_math::TimeDeltaGuard guard(options);
     auto sample = guard.update(10.0);
-    expect(sample.status == xgc2_math::SampleStatus::kInitialized);
-    expect(sample.accepted);
+    expect(sample.status == xgc2_math::TimeDeltaStatus::kInitialized);
+    expect(!sample.accepted);
+    expect(sample.dt_s == 0.0);
+    expect(std::fabs(guard.lastTimestampS() - 10.0) < 1.0e-12);
 
     sample = guard.update(10.02);
-    expect(sample.status == xgc2_math::SampleStatus::kAccepted);
+    expect(sample.status == xgc2_math::TimeDeltaStatus::kAccepted);
+    expect(sample.accepted);
     expect(std::fabs(sample.dt_s - 0.02) < 1.0e-12);
 
-    sample = guard.update(9.9);
-    expect(sample.status == xgc2_math::SampleStatus::kHeldTimeWentBack);
+    sample = guard.update(10.0205);
+    expect(sample.status == xgc2_math::TimeDeltaStatus::kHeldInvalidDt);
+    expect(!sample.accepted);
+    expect(std::fabs(guard.lastTimestampS() - 10.02) < 1.0e-12);
+
+    sample = guard.update(10.05);
+    expect(sample.status == xgc2_math::TimeDeltaStatus::kAccepted);
+    expect(sample.accepted);
+    expect(std::fabs(sample.dt_s - 0.03) < 1.0e-12);
+
+    sample = guard.update(std::numeric_limits<double>::quiet_NaN());
+    expect(sample.status == xgc2_math::TimeDeltaStatus::kHeldInvalidInput);
+    expect(!sample.accepted);
+    expect(std::fabs(guard.lastTimestampS() - 10.05) < 1.0e-12);
+
+    sample = guard.update(10.08);
+    expect(sample.status == xgc2_math::TimeDeltaStatus::kAccepted);
+    expect(sample.accepted);
+    expect(std::fabs(sample.dt_s - 0.03) < 1.0e-12);
 
     sample = guard.update(10.5);
-    expect(sample.status == xgc2_math::SampleStatus::kHeldInvalidDt);
+    expect(sample.status == xgc2_math::TimeDeltaStatus::kHeldInvalidDt);
+    expect(!sample.accepted);
+    expect(std::fabs(guard.lastTimestampS() - 10.5) < 1.0e-12);
+
+    sample = guard.update(10.54);
+    expect(sample.status == xgc2_math::TimeDeltaStatus::kAccepted);
+    expect(sample.accepted);
+    expect(std::fabs(sample.dt_s - 0.04) < 1.0e-12);
+
+    sample = guard.update(10.4);
+    expect(sample.status == xgc2_math::TimeDeltaStatus::kHeldTimeWentBack);
+    expect(!sample.accepted);
+    expect(std::fabs(guard.lastTimestampS() - 10.4) < 1.0e-12);
+
+    sample = guard.update(10.45);
+    expect(sample.status == xgc2_math::TimeDeltaStatus::kAccepted);
+    expect(sample.accepted);
+    expect(std::fabs(sample.dt_s - 0.05) < 1.0e-12);
+
+    options.reset_on_large_dt = false;
+    guard.setOptions(options);
+    guard.reset(20.0);
+    sample = guard.update(20.5);
+    expect(sample.status == xgc2_math::TimeDeltaStatus::kHeldInvalidDt);
+    expect(!sample.accepted);
+    expect(std::fabs(guard.lastTimestampS() - 20.0) < 1.0e-12);
+
+    sample = guard.update(20.08);
+    expect(sample.status == xgc2_math::TimeDeltaStatus::kAccepted);
+    expect(sample.accepted);
+    expect(std::fabs(sample.dt_s - 0.08) < 1.0e-12);
 }
 
 void testOptionNormalization() {
@@ -105,20 +181,20 @@ void testDifferentiator() {
 
     xgc2_math::Differentiator differentiator(options);
     auto sample = differentiator.update(0.0, 0.02);
-    expect(sample.status == xgc2_math::SampleStatus::kInitialized);
+    expect(sample.status == xgc2_math::DifferentiatorStatus::kInitialized);
 
     sample = differentiator.update(0.1, 0.02);
-    expect(sample.status == xgc2_math::SampleStatus::kAccepted);
+    expect(sample.status == xgc2_math::DifferentiatorStatus::kAccepted);
     expect(sample.measurement_accepted);
 
     const double derivative = sample.derivative;
     sample = differentiator.update(10.0, 0.02);
-    expect(sample.status == xgc2_math::SampleStatus::kHeldOutlier);
+    expect(sample.status == xgc2_math::DifferentiatorStatus::kHeldOutlier);
     expect(!sample.measurement_accepted);
     expect(std::fabs(sample.derivative - derivative) < 1.0e-12);
 
     sample = differentiator.update(0.2, 0.0);
-    expect(sample.status == xgc2_math::SampleStatus::kHeldInvalidDt);
+    expect(sample.status == xgc2_math::DifferentiatorStatus::kHeldInvalidDt);
 }
 
 void testAngleUtilitiesAndDifferentiator() {
@@ -135,10 +211,10 @@ void testAngleUtilitiesAndDifferentiator() {
 
     xgc2_math::AngleDifferentiator differentiator(options);
     auto sample = differentiator.update(from, 0.02);
-    expect(sample.status == xgc2_math::SampleStatus::kInitialized);
+    expect(sample.status == xgc2_math::DifferentiatorStatus::kInitialized);
 
     sample = differentiator.update(to, 0.02);
-    expect(sample.status == xgc2_math::SampleStatus::kAccepted);
+    expect(sample.status == xgc2_math::DifferentiatorStatus::kAccepted);
     expect(std::fabs(sample.derivative - 1.0) < 1.0e-12);
 }
 
@@ -151,11 +227,11 @@ void testPositionVelocityObserver() {
 
     xgc2_math::PositionVelocityLuenbergerObserver observer(options);
     auto estimate = observer.update(0.0, 0.02);
-    expect(estimate.status == xgc2_math::SampleStatus::kInitialized);
+    expect(estimate.status == xgc2_math::PositionVelocityObserverStatus::kInitialized);
 
     for (int i = 1; i <= 200; ++i) {
         estimate = observer.update(0.5 * i * 0.02, 0.02);
-        expect(estimate.status == xgc2_math::SampleStatus::kAccepted);
+        expect(estimate.status == xgc2_math::PositionVelocityObserverStatus::kAccepted);
         expect(std::isfinite(estimate.position));
         expect(std::isfinite(estimate.velocity));
     }
@@ -164,7 +240,7 @@ void testPositionVelocityObserver() {
     expect(observer.velocity() < 1.0);
 
     estimate = observer.update(100.0, 0.02);
-    expect(estimate.status == xgc2_math::SampleStatus::kHeldOutlier);
+    expect(estimate.status == xgc2_math::PositionVelocityObserverStatus::kHeldOutlier);
     expect(!estimate.measurement_accepted);
 }
 
@@ -176,10 +252,10 @@ void testAngularPositionVelocityObserver() {
 
     xgc2_math::AngularPositionVelocityLuenbergerObserver observer(options);
     auto estimate = observer.update(xgc2_math::kPi - 0.01, 0.02);
-    expect(estimate.status == xgc2_math::SampleStatus::kInitialized);
+    expect(estimate.status == xgc2_math::PositionVelocityObserverStatus::kInitialized);
 
     estimate = observer.update(-xgc2_math::kPi + 0.01, 0.02);
-    expect(estimate.status == xgc2_math::SampleStatus::kAccepted);
+    expect(estimate.status == xgc2_math::PositionVelocityObserverStatus::kAccepted);
     expect(std::fabs(estimate.residual - 0.02) < 1.0e-12);
 }
 
@@ -188,16 +264,16 @@ void testArrayWrappers() {
     std::array<double, 3> p0{{0.0, 1.0, 2.0}};
     std::array<double, 3> p1{{0.1, 1.2, 2.3}};
     auto samples = differentiator.update(p0, 0.02);
-    expect(samples[0].status == xgc2_math::SampleStatus::kInitialized);
+    expect(samples[0].status == xgc2_math::DifferentiatorStatus::kInitialized);
     samples = differentiator.update(p1, 0.1);
-    expect(samples[0].status == xgc2_math::SampleStatus::kAccepted);
+    expect(samples[0].status == xgc2_math::DifferentiatorStatus::kAccepted);
     expect(std::fabs(samples[2].derivative - 3.0) < 1.0e-12);
 
     xgc2_math::ArrayPositionVelocityLuenbergerObserver<3> observer;
     auto estimates = observer.update(p0, 0.02);
-    expect(estimates[1].status == xgc2_math::SampleStatus::kInitialized);
+    expect(estimates[1].status == xgc2_math::PositionVelocityObserverStatus::kInitialized);
     estimates = observer.update(p1, 0.02);
-    expect(estimates[1].status == xgc2_math::SampleStatus::kAccepted);
+    expect(estimates[1].status == xgc2_math::PositionVelocityObserverStatus::kAccepted);
 }
 
 void testScalarRecursiveLeastSquares() {
@@ -210,11 +286,11 @@ void testScalarRecursiveLeastSquares() {
 
     xgc2_math::ScalarRecursiveLeastSquares estimator(options);
     auto sample = estimator.update(4.0, 2.0);
-    expect(sample.status == xgc2_math::SampleStatus::kHeldInvalidInput);
+    expect(sample.status == xgc2_math::ScalarRecursiveLeastSquaresStatus::kHeldInvalidInput);
 
     estimator.reset(1.0, 10.0);
     sample = estimator.update(6.0, 2.0);
-    expect(sample.status == xgc2_math::SampleStatus::kAccepted);
+    expect(sample.status == xgc2_math::ScalarRecursiveLeastSquaresStatus::kAccepted);
     expect(sample.measurement_accepted);
     expect(sample.parameter > 2.0);
     expect(sample.parameter < 3.0);
@@ -222,14 +298,14 @@ void testScalarRecursiveLeastSquares() {
 
     const double held_parameter = sample.parameter;
     sample = estimator.update(std::numeric_limits<double>::quiet_NaN(), 2.0);
-    expect(sample.status == xgc2_math::SampleStatus::kHeldInvalidInput);
+    expect(sample.status == xgc2_math::ScalarRecursiveLeastSquaresStatus::kHeldInvalidInput);
     expect(std::fabs(sample.parameter - held_parameter) < 1.0e-12);
 
     sample = estimator.update(6.0, 0.0);
-    expect(sample.status == xgc2_math::SampleStatus::kHeldInvalidInput);
+    expect(sample.status == xgc2_math::ScalarRecursiveLeastSquaresStatus::kHeldInvalidInput);
 
     sample = estimator.update(6.0, std::numeric_limits<double>::quiet_NaN());
-    expect(sample.status == xgc2_math::SampleStatus::kHeldInvalidInput);
+    expect(sample.status == xgc2_math::ScalarRecursiveLeastSquaresStatus::kHeldInvalidInput);
     expect(!sample.measurement_accepted);
 }
 
@@ -302,13 +378,13 @@ void testSe2Utilities() {
     expect(std::fabs(error.z() - delta.yaw) < 1.0e-12);
 }
 
-void testPlanarInertialEskf() {
-    xgc2_math::PlanarInertialEskfConfig config;
+void testPose2InertialEskf() {
+    xgc2_math::Pose2InertialEskfConfig config;
     config.measurement_frame_to_world.position = Eigen::Vector2d(1.0, 2.0);
     config.measurement_frame_to_world.yaw = 0.0;
     config.body_to_marker.position = Eigen::Vector2d(0.2, 0.0);
-    config.vrpn_position_noise_std = 0.01;
-    config.vrpn_yaw_noise_std = 0.01;
+    config.pose_position_noise_std = 0.01;
+    config.pose_yaw_noise_std = 0.01;
     config.accel_noise_std = 0.3;
     config.gyro_noise_std = 0.03;
     config.gyro_bias_random_walk_std = 1.0e-4;
@@ -316,7 +392,7 @@ void testPlanarInertialEskf() {
     config.innovation_position_gate_m = 0.8;
     config.innovation_yaw_gate_rad = 0.5;
 
-    xgc2_math::PlanarInertialEskf estimator;
+    xgc2_math::Pose2InertialEskf estimator;
     estimator.setConfig(config);
 
     xgc2_math::PlanarPoseMeasurement first_pose;
@@ -373,12 +449,12 @@ void testPlanarInertialEskf() {
     expect((estimator.state().position - held_position).norm() < 1.0e-12);
 }
 
-void testInertialPoseEskfInitialization() {
-    xgc2_math::InertialPoseEskfConfig config;
+void testPose3InertialEskfInitialization() {
+    xgc2_math::Pose3InertialEskfConfig config;
     config.measurement_frame_to_world.position = Eigen::Vector3d(1.0, 2.0, 3.0);
     config.body_to_marker.position = Eigen::Vector3d(0.1, 0.0, 0.0);
 
-    xgc2_math::InertialPoseEskf eskf;
+    xgc2_math::Pose3InertialEskf eskf;
     eskf.setConfig(config);
 
     const auto imu = InertialPoseTestSamples::inertial(1.0);
@@ -393,8 +469,8 @@ void testInertialPoseEskfInitialization() {
     expect(std::fabs(eskf.correctedBodyPose().position.x() - 2.9) < 1.0e-12);
 }
 
-void testInertialPoseEskfStationaryPropagation() {
-    xgc2_math::InertialPoseEskf eskf;
+void testPose3InertialEskfStationaryPropagation() {
+    xgc2_math::Pose3InertialEskf eskf;
     const auto imu0 = InertialPoseTestSamples::inertial(1.0, Eigen::Vector3d(0.1, 0.0, 0.0));
     eskf.initializeFromPose(InertialPoseTestSamples::pose(1.0, Eigen::Vector3d::Zero()), &imu0);
 
@@ -407,11 +483,11 @@ void testInertialPoseEskfStationaryPropagation() {
     expect(eskf.state().orientation.w() >= 0.0);
 }
 
-void testInertialPoseEskfPoseUpdateAndReject() {
-    xgc2_math::InertialPoseEskfConfig config;
+void testPose3InertialEskfPoseUpdateAndReject() {
+    xgc2_math::Pose3InertialEskfConfig config;
     config.innovation_position_gate_m = 0.5;
 
-    xgc2_math::InertialPoseEskf eskf;
+    xgc2_math::Pose3InertialEskf eskf;
     eskf.setConfig(config);
     const auto imu0 = InertialPoseTestSamples::inertial(1.0);
     eskf.initializeFromPose(InertialPoseTestSamples::pose(1.0, Eigen::Vector3d::Zero()), &imu0);
@@ -428,8 +504,8 @@ void testInertialPoseEskfPoseUpdateAndReject() {
     expect(std::fabs(eskf.state().position.x() - held_position) < 1.0e-12);
 }
 
-void testInertialPoseEskfInvalidAndLargeDtHoldState() {
-    xgc2_math::InertialPoseEskf eskf;
+void testPose3InertialEskfInvalidAndLargeDtHoldState() {
+    xgc2_math::Pose3InertialEskf eskf;
     const auto imu0 = InertialPoseTestSamples::inertial(1.0);
     eskf.initializeFromPose(InertialPoseTestSamples::pose(1.0, Eigen::Vector3d::Zero()), &imu0);
 
@@ -450,13 +526,13 @@ void testInertialPoseEskfInvalidAndLargeDtHoldState() {
     expect(eskf.state().position.norm() < 1.0e-12);
 }
 
-void testInertialPoseEskfGyroBiasAndCorrectedPose() {
-    xgc2_math::InertialPoseEskfConfig config;
+void testPose3InertialEskfGyroBiasAndCorrectedPose() {
+    xgc2_math::Pose3InertialEskfConfig config;
     config.pose_position_noise_std = 0.01;
     config.pose_orientation_noise_std = 0.01;
     config.gyro_bias_random_walk_std = 1.0e-4;
 
-    xgc2_math::InertialPoseEskf eskf;
+    xgc2_math::Pose3InertialEskf eskf;
     eskf.setConfig(config);
     const auto imu0 = InertialPoseTestSamples::inertial(1.0);
     eskf.initializeFromPose(InertialPoseTestSamples::pose(1.0, Eigen::Vector3d::Zero()), &imu0);
@@ -469,6 +545,54 @@ void testInertialPoseEskfGyroBiasAndCorrectedPose() {
     expect(eskf.state().position.x() > 0.0);
     expect(eskf.covariance().trace() > 0.0);
     expect(eskf.state().orientation.w() >= 0.0);
+}
+
+void testTrajectoryAndNmpcProblemContracts() {
+    xgc2_math::trajectory::CircleEntryCurveParameters3 circle_entry_params;
+    circle_entry_params.duration = 12.0;
+    circle_entry_params.origin = Eigen::Vector3d(0.0, 0.0, 3.0);
+    circle_entry_params.entry_duration = 2.0;
+    circle_entry_params.circle.radius = 3.0;
+    circle_entry_params.circle.line_speed = 2.0;
+    circle_entry_params.circle.height = 3.0;
+    circle_entry_params.circle.z_amplitude = 0.5;
+
+    xgc2_math::trajectory::CircleEntryCurveEvaluator3 circle_entry(circle_entry_params);
+    xgc2_math::trajectory::FlatOutput3 flat;
+    expect(circle_entry.evaluate(0.5, flat));
+    expect(xgc2_math::trajectory::TrajectoryValidator3::finite(flat));
+
+    xgc2_math::trajectory::FigureEightCurveEvaluator2 figure_eight;
+    xgc2_math::trajectory::PlanarReference2 planar_ref;
+    expect(figure_eight.evaluate(0.5, planar_ref));
+    expect(xgc2_math::trajectory::TrajectoryValidator2::finite(planar_ref));
+
+    xgc2_math::control::Se3State se3_state;
+    se3_state.position = Eigen::Vector3d(1.0, 2.0, 3.0);
+    xgc2_math::control::Se3Control se3_control;
+    se3_control.body_z_specific_force = 9.8;
+    se3_control.angular_acceleration = Eigen::Vector3d(0.1, 0.2, 0.3);
+    const auto se3_x = xgc2_math::control::packState(se3_state);
+    const auto se3_u = xgc2_math::control::packControl(se3_control);
+    expect(se3_x.size() == 13);
+    expect(std::fabs(se3_u(0) - 9.8) < 1.0e-12);
+    expect(std::fabs(xgc2_math::control::unpackControl(se3_u).angular_acceleration.z() - 0.3) <
+           1.0e-12);
+
+    xgc2_math::control::Se2State se2_state;
+    se2_state.position = Eigen::Vector2d(1.0, 2.0);
+    se2_state.yaw = 4.0;
+    se2_state.linear_speed = 1.5;
+    xgc2_math::control::Se2Control se2_control;
+    se2_control.linear_acceleration = 0.4;
+    se2_control.yaw_rate = 0.7;
+    const auto se2_x = xgc2_math::control::packState(se2_state);
+    const auto se2_u = xgc2_math::control::packControl(se2_control);
+    expect(se2_x.size() == 4);
+    expect(std::fabs(xgc2_math::control::unpackState(se2_x).yaw - xgc2_math::normalizeAngle(4.0)) <
+           1.0e-12);
+    expect(std::fabs(se2_u(0) - 0.4) < 1.0e-12);
+    expect(std::fabs(se2_u(1) - 0.7) < 1.0e-12);
 }
 
 } // namespace
@@ -488,11 +612,12 @@ int main() {
     testScalarRecursiveLeastSquares();
     testSe3Utilities();
     testSe2Utilities();
-    testPlanarInertialEskf();
-    testInertialPoseEskfInitialization();
-    testInertialPoseEskfStationaryPropagation();
-    testInertialPoseEskfPoseUpdateAndReject();
-    testInertialPoseEskfInvalidAndLargeDtHoldState();
-    testInertialPoseEskfGyroBiasAndCorrectedPose();
+    testPose2InertialEskf();
+    testPose3InertialEskfInitialization();
+    testPose3InertialEskfStationaryPropagation();
+    testPose3InertialEskfPoseUpdateAndReject();
+    testPose3InertialEskfInvalidAndLargeDtHoldState();
+    testPose3InertialEskfGyroBiasAndCorrectedPose();
+    testTrajectoryAndNmpcProblemContracts();
     return 0;
 }

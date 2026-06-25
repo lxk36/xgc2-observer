@@ -5,7 +5,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 
-version="${PACKAGE_VERSION:-0.4.1-1}"
+version="${PACKAGE_VERSION:-0.5.0-1}"
 build_dir="${XGC2_MATH_BUILD_DIR:-${repo_root}/.ci/build}"
 stage_dir="${XGC2_MATH_STAGE_DIR:-${repo_root}/.ci/stage}"
 output_dir="${XGC2_MATH_DEB_OUTPUT_DIR:-${repo_root}/.ci/debs}"
@@ -64,68 +64,88 @@ build_package() {
 
 base_depends="libeigen3-dev, libc6, libgcc-s1, libstdc++6"
 
-core_pkg="libxgc2-math-core-dev"
-write_control "${core_pkg}" "${base_depends}" "XGC2 math core headers"
-copy_path "${stage_dir}/usr/include/xgc2_math/core" "${pkg_dir}/${core_pkg}"
-copy_path "${stage_dir}/usr/include/xgc2_math/core.hpp" "${pkg_dir}/${core_pkg}"
+utils_pkg="libxgc2-math-utils-dev"
+write_control "${utils_pkg}" "${base_depends}" "XGC2 math utils headers"
+copy_path "${stage_dir}/usr/include/xgc2_math/utils" "${pkg_dir}/${utils_pkg}"
+copy_path "${stage_dir}/usr/include/xgc2_math/utils.hpp" "${pkg_dir}/${utils_pkg}"
 
 geometry_pkg="libxgc2-math-geometry-dev"
-write_control "${geometry_pkg}" "libxgc2-math-core-dev (= ${version}), ${base_depends}" \
+write_control "${geometry_pkg}" "libxgc2-math-utils-dev (= ${version}), ${base_depends}" \
   "XGC2 math geometry headers"
 copy_path "${stage_dir}/usr/include/xgc2_math/geometry" "${pkg_dir}/${geometry_pkg}"
 copy_path "${stage_dir}/usr/include/xgc2_math/geometry.hpp" "${pkg_dir}/${geometry_pkg}"
 
 filter_pkg="libxgc2-math-filter-dev"
-write_control "${filter_pkg}" "libxgc2-math-core-dev (= ${version}), ${base_depends}" \
+write_control "${filter_pkg}" "libxgc2-math-utils-dev (= ${version}), ${base_depends}" \
   "XGC2 math filter headers"
 copy_path "${stage_dir}/usr/include/xgc2_math/filter" "${pkg_dir}/${filter_pkg}"
 copy_path "${stage_dir}/usr/include/xgc2_math/filter.hpp" "${pkg_dir}/${filter_pkg}"
 
 observer_pkg="libxgc2-math-observer-dev"
 write_control "${observer_pkg}" \
-  "libxgc2-math-core-dev (= ${version}), libxgc2-math-filter-dev (= ${version}), ${base_depends}" \
+  "libxgc2-math-utils-dev (= ${version}), libxgc2-math-filter-dev (= ${version}), ${base_depends}" \
   "XGC2 math observer headers"
 copy_path "${stage_dir}/usr/include/xgc2_math/observer" "${pkg_dir}/${observer_pkg}"
 copy_path "${stage_dir}/usr/include/xgc2_math/observer.hpp" "${pkg_dir}/${observer_pkg}"
 
 estimation_pkg="libxgc2-math-estimation-dev"
 write_control "${estimation_pkg}" \
-  "libxgc2-math-core-dev (= ${version}), libxgc2-math-geometry-dev (= ${version}), libxgc2-math-filter-dev (= ${version}), libxgc2-math-observer-dev (= ${version}), ${base_depends}" \
+  "libxgc2-math-utils-dev (= ${version}), libxgc2-math-geometry-dev (= ${version}), libxgc2-math-filter-dev (= ${version}), libxgc2-math-observer-dev (= ${version}), ${base_depends}" \
   "XGC2 math estimation headers"
 copy_path "${stage_dir}/usr/include/xgc2_math/estimation" "${pkg_dir}/${estimation_pkg}"
 copy_path "${stage_dir}/usr/include/xgc2_math/estimation.hpp" "${pkg_dir}/${estimation_pkg}"
 
+optimization_pkg="libxgc2-math-optimization-dev"
+write_control "${optimization_pkg}" "libxgc2-math-utils-dev (= ${version}), ${base_depends}" \
+  "XGC2 math optimization headers"
+copy_path "${stage_dir}/usr/include/xgc2_math/optimization" "${pkg_dir}/${optimization_pkg}"
+copy_path "${stage_dir}/usr/include/xgc2_math/optimization.hpp" "${pkg_dir}/${optimization_pkg}"
+
+trajectory_pkg="libxgc2-math-trajectory-dev"
+write_control "${trajectory_pkg}" \
+  "libxgc2-math-utils-dev (= ${version}), libxgc2-math-geometry-dev (= ${version}), libxgc2-math-optimization-dev (= ${version}), ${base_depends}" \
+  "XGC2 math trajectory headers"
+copy_path "${stage_dir}/usr/include/xgc2_math/trajectory" "${pkg_dir}/${trajectory_pkg}"
+copy_path "${stage_dir}/usr/include/xgc2_math/trajectory.hpp" "${pkg_dir}/${trajectory_pkg}"
+
 control_pkg="libxgc2-math-control-dev"
-write_control "${control_pkg}" "libxgc2-math-core-dev (= ${version}), ${base_depends}" \
+write_control "${control_pkg}" "libxgc2-math-utils-dev (= ${version}), ${base_depends}" \
   "XGC2 math control headers"
+copy_path "${stage_dir}/usr/include/xgc2_math/control" "${pkg_dir}/${control_pkg}"
 copy_path "${stage_dir}/usr/include/xgc2_math/control.hpp" "${pkg_dir}/${control_pkg}"
 
 meta_pkg="libxgc2-math-dev"
 write_control "${meta_pkg}" \
-  "libxgc2-math-core-dev (= ${version}), libxgc2-math-geometry-dev (= ${version}), libxgc2-math-filter-dev (= ${version}), libxgc2-math-observer-dev (= ${version}), libxgc2-math-estimation-dev (= ${version}), libxgc2-math-control-dev (= ${version}), ${base_depends}" \
+  "libxgc2-math-utils-dev (= ${version}), libxgc2-math-geometry-dev (= ${version}), libxgc2-math-filter-dev (= ${version}), libxgc2-math-observer-dev (= ${version}), libxgc2-math-estimation-dev (= ${version}), libxgc2-math-optimization-dev (= ${version}), libxgc2-math-trajectory-dev (= ${version}), libxgc2-math-control-dev (= ${version}), ${base_depends}" \
   "XGC2 math meta development package"
 copy_path "${stage_dir}/usr/include/xgc2_math/math.hpp" "${pkg_dir}/${meta_pkg}"
 copy_path "${stage_dir}/usr/include/xgc2_math/types.hpp" "${pkg_dir}/${meta_pkg}"
 copy_path "${stage_dir}/usr/lib/cmake/xgc2_math" "${pkg_dir}/${meta_pkg}"
 copy_path "${stage_dir}/usr/share/doc/libxgc2-math-dev/matlab" "${pkg_dir}/${meta_pkg}"
 
-test -f "${pkg_dir}/${core_pkg}/usr/include/xgc2_math/core/status.hpp"
+test -f "${pkg_dir}/${utils_pkg}/usr/include/xgc2_math/utils/status.hpp"
 test -f "${pkg_dir}/${geometry_pkg}/usr/include/xgc2_math/geometry/se2.hpp"
 test -f "${pkg_dir}/${geometry_pkg}/usr/include/xgc2_math/geometry/occupied_sets/sphere_set.h"
 test -f "${pkg_dir}/${filter_pkg}/usr/include/xgc2_math/filter/exponential_filter.hpp"
 test -f "${pkg_dir}/${observer_pkg}/usr/include/xgc2_math/observer/differentiator.hpp"
-test -f "${pkg_dir}/${estimation_pkg}/usr/include/xgc2_math/estimation/inertial_pose_eskf.hpp"
-test -f "${pkg_dir}/${estimation_pkg}/usr/include/xgc2_math/estimation/planar_inertial_eskf.hpp"
+test -f "${pkg_dir}/${estimation_pkg}/usr/include/xgc2_math/estimation/pose3_inertial_eskf.hpp"
+test -f "${pkg_dir}/${estimation_pkg}/usr/include/xgc2_math/estimation/pose2_inertial_eskf.hpp"
+test -f "${pkg_dir}/${optimization_pkg}/usr/include/xgc2_math/optimization/minco.hpp"
+test -f "${pkg_dir}/${trajectory_pkg}/usr/include/xgc2_math/trajectory/trajectory3.hpp"
+test -f "${pkg_dir}/${trajectory_pkg}/usr/include/xgc2_math/trajectory/analytic/circle_entry.hpp"
 test -f "${pkg_dir}/${control_pkg}/usr/include/xgc2_math/control.hpp"
+test -f "${pkg_dir}/${control_pkg}/usr/include/xgc2_math/control/se3_nmpc_problem.hpp"
 test -f "${pkg_dir}/${meta_pkg}/usr/include/xgc2_math/math.hpp"
 test -f "${pkg_dir}/${meta_pkg}/usr/lib/cmake/xgc2_math/xgc2_mathConfig.cmake"
 
 for package_name in \
-  "${core_pkg}" \
+  "${utils_pkg}" \
   "${geometry_pkg}" \
   "${filter_pkg}" \
   "${observer_pkg}" \
   "${estimation_pkg}" \
+  "${optimization_pkg}" \
+  "${trajectory_pkg}" \
   "${control_pkg}" \
   "${meta_pkg}"; do
   build_package "${package_name}"

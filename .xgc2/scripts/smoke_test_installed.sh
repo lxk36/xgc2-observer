@@ -3,11 +3,13 @@
 set -euo pipefail
 
 dpkg -s libxgc2-math-dev >/dev/null
-dpkg -s libxgc2-math-core-dev >/dev/null
+dpkg -s libxgc2-math-utils-dev >/dev/null
 dpkg -s libxgc2-math-geometry-dev >/dev/null
 dpkg -s libxgc2-math-filter-dev >/dev/null
 dpkg -s libxgc2-math-observer-dev >/dev/null
 dpkg -s libxgc2-math-estimation-dev >/dev/null
+dpkg -s libxgc2-math-optimization-dev >/dev/null
+dpkg -s libxgc2-math-trajectory-dev >/dev/null
 dpkg -s libxgc2-math-control-dev >/dev/null
 
 test -f /usr/include/xgc2_math/math.hpp
@@ -17,8 +19,13 @@ test -f /usr/include/xgc2_math/geometry/se3.hpp
 test -f /usr/include/xgc2_math/geometry/occupied_sets/sphere_set.h
 test -f /usr/include/xgc2_math/filter/exponential_filter.hpp
 test -f /usr/include/xgc2_math/observer/differentiator.hpp
-test -f /usr/include/xgc2_math/estimation/inertial_pose_eskf.hpp
-test -f /usr/include/xgc2_math/estimation/planar_inertial_eskf.hpp
+test -f /usr/include/xgc2_math/estimation/pose3_inertial_eskf.hpp
+test -f /usr/include/xgc2_math/estimation/pose2_inertial_eskf.hpp
+test -f /usr/include/xgc2_math/optimization/minco.hpp
+test -f /usr/include/xgc2_math/trajectory/trajectory3.hpp
+test -f /usr/include/xgc2_math/trajectory/analytic/circle_entry.hpp
+test -f /usr/include/xgc2_math/control/se2_nmpc_problem.hpp
+test -f /usr/include/xgc2_math/control/se3_nmpc_problem.hpp
 test -f /usr/lib/cmake/xgc2_math/xgc2_mathConfig.cmake
 
 probe_dir="${XGC2_MATH_SMOKE_DIR:-$(mktemp -d -t xgc2-math-smoke-XXXXXX)}"
@@ -37,7 +44,7 @@ target_link_libraries(link_probe PRIVATE xgc2_math::math)
 CMAKE
 
 cat > "${probe_dir}/link_probe.cpp" <<'CPP'
-#include <math.hpp>
+#include <xgc2_math/math.hpp>
 
 int main()
 {
@@ -50,10 +57,14 @@ int main()
   xgc2_math::AngularPositionVelocityLuenbergerObserver yaw_observer;
   xgc2_math::ArrayDifferentiator<3> array_diff;
   xgc2_math::ScalarRecursiveLeastSquares rls;
-  xgc2_math::InertialPoseEskf inertial_pose_eskf;
-  xgc2_math::PlanarInertialEskf planar_eskf;
+  xgc2_math::Pose3InertialEskf pose3_inertial_eskf;
+  xgc2_math::Pose2InertialEskf planar_eskf;
   xgc2_math::SphereSet sphere(Eigen::Vector3d::Zero(), 1.0);
   xgc2_math::Pose2 planar_pose;
+  xgc2_math::trajectory::CircleEntryCurveEvaluator3 entry_curve;
+  xgc2_math::trajectory::FlatOutput3 flat;
+  xgc2_math::control::Se3State se3_state;
+  xgc2_math::control::Se2Control se2_control;
 
   const auto dt0 = dt_guard.update(1.0);
   const auto dt1 = dt_guard.update(1.01);
@@ -70,13 +81,17 @@ int main()
   pose_sample.received = true;
   pose_sample.valid = true;
   pose_sample.stamp_sec = 1.0;
-  inertial_pose_eskf.initializeFromPose(pose_sample, nullptr);
+  pose3_inertial_eskf.initializeFromPose(pose_sample, nullptr);
   xgc2_math::PlanarPoseMeasurement planar_sample;
   planar_sample.received = true;
   planar_sample.valid = true;
   planar_sample.stamp_sec = 1.0;
   planar_eskf.initializeFromPose(planar_sample, nullptr);
   planar_pose = xgc2_math::compose(planar_pose, xgc2_math::Pose2{Eigen::Vector2d::UnitX(), 0.1});
+  const bool curve_ok = entry_curve.evaluate(0.1, flat);
+  const auto se3_vec = xgc2_math::control::packState(se3_state);
+  se2_control.yaw_rate = 0.2;
+  const auto se2_u = xgc2_math::control::packControl(se2_control);
 
   return dt0.accepted && dt1.accepted &&
          derivative.measurement_accepted &&
@@ -85,8 +100,11 @@ int main()
          yaw_estimate.measurement_accepted &&
          array_samples[0].measurement_accepted &&
          rls_sample.measurement_accepted &&
-         inertial_pose_eskf.initialized() &&
+         pose3_inertial_eskf.initialized() &&
          planar_eskf.initialized() &&
+         curve_ok &&
+         se3_vec.size() == 13 &&
+         se2_u(1) > 0.1 &&
          planar_pose.position.x() > 0.9 &&
          sphere.support(Eigen::Vector3d::UnitX()).support_point.x() > 0.9 ? 0 : 1;
 }

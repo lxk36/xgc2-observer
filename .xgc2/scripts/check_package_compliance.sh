@@ -32,22 +32,29 @@ required_files=(
   README.md
   CMakeLists.txt
   cmake/xgc2_mathConfig.cmake.in
-  include/math.hpp
-  include/types.hpp
-  include/core.hpp
-  include/geometry.hpp
-  include/filter.hpp
-  include/observer.hpp
-  include/estimation.hpp
-  include/control.hpp
-  include/core/angle.hpp
-  include/core/status.hpp
-  include/core/time_delta.hpp
-  include/geometry/se3.hpp
-  include/geometry/occupied_sets/sphere_set.h
-  include/filter/exponential_filter.hpp
-  include/observer/differentiator.hpp
-  include/estimation/inertial_pose_eskf.hpp
+  include/xgc2_math/math.hpp
+  include/xgc2_math/types.hpp
+  include/xgc2_math/utils.hpp
+  include/xgc2_math/geometry.hpp
+  include/xgc2_math/filter.hpp
+  include/xgc2_math/observer.hpp
+  include/xgc2_math/estimation.hpp
+  include/xgc2_math/optimization.hpp
+  include/xgc2_math/trajectory.hpp
+  include/xgc2_math/control.hpp
+  include/xgc2_math/algebra.hpp
+  include/xgc2_math/algebra/angle.hpp
+  include/xgc2_math/utils/status.hpp
+  include/xgc2_math/utils/time_delta.hpp
+  include/xgc2_math/geometry/se3.hpp
+  include/xgc2_math/geometry/occupied_sets/sphere_set.h
+  include/xgc2_math/filter/exponential_filter.hpp
+  include/xgc2_math/observer/differentiator.hpp
+  include/xgc2_math/estimation/pose3_inertial_eskf.hpp
+  include/xgc2_math/optimization/minco.hpp
+  include/xgc2_math/trajectory/trajectory3.hpp
+  include/xgc2_math/trajectory/analytic/circle_entry.hpp
+  include/xgc2_math/control/se3_nmpc_problem.hpp
   test/math_header_test.cpp
   .github/workflows/ci.yml
   .xgc2/product.yml

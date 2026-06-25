@@ -1,5 +1,5 @@
-function results = run_inertial_pose_eskf_simulation()
-%RUN_INERTIAL_POSE_ESKF_SIMULATION Reference scenarios for InertialPoseEskf.
+function results = run_pose3_inertial_eskf_simulation()
+%RUN_INERTIAL_POSE_ESKF_SIMULATION Reference scenarios for Pose3InertialEskf.
 % Quaternion convention is [w x y z]. Pose convention is T_AB: frame B in A.
 
 cfg = default_config();

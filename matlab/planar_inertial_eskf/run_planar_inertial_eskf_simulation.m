@@ -1,5 +1,5 @@
-function run_planar_inertial_eskf_simulation()
-%RUN_PLANAR_INERTIAL_ESKF_SIMULATION Reference simulation for PlanarInertialEskf.
+function run_pose2_inertial_eskf_simulation()
+%RUN_PLANAR_INERTIAL_ESKF_SIMULATION Reference simulation for Pose2InertialEskf.
 
 cfg = default_config();
 state = initialize_state(cfg, [0.0; 0.0; 0.0], 0.0);
@@ -53,8 +53,8 @@ cfg.gyro_noise_std = 0.03;
 cfg.accel_noise_std = 0.35;
 cfg.gyro_bias_random_walk_std = 1.0e-4;
 cfg.accel_bias_random_walk_std = 1.0e-3;
-cfg.vrpn_position_noise_std = 0.01;
-cfg.vrpn_yaw_noise_std = 0.01;
+cfg.pose_position_noise_std = 0.01;
+cfg.pose_yaw_noise_std = 0.01;
 cfg.innovation_position_gate_m = 1.5;
 cfg.innovation_yaw_gate_rad = 0.8;
 end
@@ -117,7 +117,7 @@ if norm(innovation(1:2)) > cfg.innovation_position_gate_m || abs(innovation(3)) 
 end
 
 H = numerical_jacobian(state, cfg, measurement, predicted_marker);
-R = diag([cfg.vrpn_position_noise_std^2, cfg.vrpn_position_noise_std^2, cfg.vrpn_yaw_noise_std^2]);
+R = diag([cfg.pose_position_noise_std^2, cfg.pose_position_noise_std^2, cfg.pose_yaw_noise_std^2]);
 S = H * state.P * H' + R;
 K = state.P * H' / S;
 delta = K * innovation;

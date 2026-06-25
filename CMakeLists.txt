@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(xgc2_math VERSION 0.4.1 LANGUAGES CXX)
+project(xgc2_math VERSION 0.5.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -17,18 +17,21 @@ function(add_xgc2_math_component component)
 target_include_directories("${target}"
   INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/xgc2_math>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   )
   target_link_libraries("${target}" INTERFACE Eigen3::Eigen ${ARGN})
   install(TARGETS "${target}" EXPORT xgc2_mathTargets)
 endfunction()
 
-add_xgc2_math_component(core)
-add_xgc2_math_component(geometry xgc2_math::core)
-add_xgc2_math_component(filter xgc2_math::core)
-add_xgc2_math_component(observer xgc2_math::core xgc2_math::filter)
-add_xgc2_math_component(estimation xgc2_math::core xgc2_math::geometry xgc2_math::filter xgc2_math::observer)
-add_xgc2_math_component(control xgc2_math::core)
+add_xgc2_math_component(algebra)
+add_xgc2_math_component(utils)
+add_xgc2_math_component(geometry xgc2_math::algebra xgc2_math::utils)
+add_xgc2_math_component(filter xgc2_math::algebra xgc2_math::utils)
+add_xgc2_math_component(observer xgc2_math::algebra xgc2_math::utils xgc2_math::filter)
+add_xgc2_math_component(estimation xgc2_math::algebra xgc2_math::utils xgc2_math::geometry xgc2_math::filter xgc2_math::observer)
+add_xgc2_math_component(optimization xgc2_math::utils)
+add_xgc2_math_component(trajectory xgc2_math::utils xgc2_math::geometry xgc2_math::optimization)
+add_xgc2_math_component(control xgc2_math::utils)
 
 add_library(xgc2_math INTERFACE)
 add_library(xgc2_math::math ALIAS xgc2_math)
@@ -37,20 +40,23 @@ target_compile_features(xgc2_math INTERFACE cxx_std_17)
 target_include_directories(xgc2_math
   INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/xgc2_math>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_link_libraries(xgc2_math
   INTERFACE
     xgc2_math::control
-    xgc2_math::core
+    xgc2_math::algebra
+    xgc2_math::utils
     xgc2_math::estimation
     xgc2_math::filter
     xgc2_math::geometry
     xgc2_math::observer
+    xgc2_math::optimization
+    xgc2_math::trajectory
 )
 install(TARGETS xgc2_math EXPORT xgc2_mathTargets)
 
-install(DIRECTORY include/
+install(DIRECTORY include/xgc2_math/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/xgc2_math
 )
 
