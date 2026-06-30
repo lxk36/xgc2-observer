@@ -53,7 +53,11 @@ required_files=(
   include/xgc2_math/estimation/pose3_inertial_eskf.hpp
   include/xgc2_math/optimization/minco.hpp
   include/xgc2_math/trajectory/trajectory3.hpp
-  include/xgc2_math/trajectory/analytic/circle_entry.hpp
+  include/xgc2_math/trajectory/analytic/2d/circle_entry_2d.hpp
+  include/xgc2_math/trajectory/analytic/3d/circle_entry_3d.hpp
+  include/xgc2_math/trajectory/analytic/3d/helix_xy_3d.hpp
+  include/xgc2_math/trajectory/analytic/3d/helix_yz_3d.hpp
+  include/xgc2_math/trajectory/analytic/3d/torus_knot_3d.hpp
   include/xgc2_math/control/se3_nmpc_problem.hpp
   test/math_header_test.cpp
   .github/workflows/ci.yml

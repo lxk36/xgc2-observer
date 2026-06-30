@@ -1129,9 +1129,14 @@ void testPose3InertialEskfVrpnHealthTransitions() {
 }
 
 void testTrajectoryAndNmpcProblemContracts() {
+    auto angle_error = [](double a, double b) {
+        return std::atan2(std::sin(a - b), std::cos(a - b));
+    };
+
     xgc2_math::trajectory::CircleEntryCurveParameters3 circle_entry_params;
     circle_entry_params.duration = 12.0;
     circle_entry_params.origin = Eigen::Vector3d(0.0, 0.0, 3.0);
+    circle_entry_params.origin_yaw = 0.4;
     circle_entry_params.entry_duration = 2.0;
     circle_entry_params.circle.radius = 3.0;
     circle_entry_params.circle.line_speed = 2.0;
@@ -1140,8 +1145,16 @@ void testTrajectoryAndNmpcProblemContracts() {
 
     xgc2_math::trajectory::CircleEntryCurveEvaluator3 circle_entry(circle_entry_params);
     xgc2_math::trajectory::FlatOutput3 flat;
+    expect(circle_entry.evaluate(0.05, flat));
+    expect(std::fabs(angle_error(flat.yaw, circle_entry_params.origin_yaw)) < 0.1);
+    expect(std::fabs(flat.yaw_rate) < 1.0e-12);
+    expect(std::fabs(flat.yaw_accel) < 1.0e-12);
     expect(circle_entry.evaluate(0.5, flat));
     expect(xgc2_math::trajectory::TrajectoryValidator3::finite(flat));
+    expect(circle_entry.evaluate(1.8, flat));
+    expect(std::fabs(angle_error(flat.yaw, circle_entry_params.origin_yaw)) < 1.0e-12);
+    expect(std::fabs(flat.yaw_rate) < 1.0e-12);
+    expect(std::fabs(flat.yaw_accel) < 1.0e-12);
 
     xgc2_math::trajectory::FigureEightCurveEvaluator2 figure_eight;
     xgc2_math::trajectory::PlanarReference2 planar_ref;
@@ -1154,6 +1167,9 @@ void testTrajectoryAndNmpcProblemContracts() {
     xgc2_math::trajectory::LineCurveEvaluator3 line(line_params);
     expect(line.evaluate(2.0, flat));
     expect(flat.position.isApprox(line_params.target, 1.0e-12));
+    expect(std::fabs(flat.yaw) < 1.0e-12);
+    expect(std::fabs(flat.yaw_rate) < 1.0e-12);
+    expect(std::fabs(flat.yaw_accel) < 1.0e-12);
 
     xgc2_math::trajectory::LemniscateCurveParameters3 lemniscate_params;
     lemniscate_params.radius = 2.0;
@@ -1162,17 +1178,25 @@ void testTrajectoryAndNmpcProblemContracts() {
     expect(lemniscate.evaluate(0.0, flat));
     expect(std::fabs(flat.velocity.x() - 1.0) < 1.0e-12);
     expect(std::fabs(flat.velocity.y() - 1.0) < 1.0e-12);
+    expect(std::fabs(flat.yaw) < 1.0e-12);
+    expect(std::fabs(flat.yaw_rate) < 1.0e-12);
 
-    xgc2_math::trajectory::HelixCurveParameters3 helix_params;
-    helix_params.radius = 1.0;
-    helix_params.omega = 0.8;
-    helix_params.linear_scale = 5.0;
-    xgc2_math::trajectory::HelixYzCurveEvaluator3 helix_yz(helix_params);
+    xgc2_math::trajectory::HelixYzCurveParameters3 helix_yz_params;
+    helix_yz_params.radius = 1.0;
+    helix_yz_params.omega = 0.8;
+    helix_yz_params.linear_scale = 5.0;
+    xgc2_math::trajectory::HelixYzCurveEvaluator3 helix_yz(helix_yz_params);
     expect(helix_yz.evaluate(0.0, flat));
     expect(std::fabs(flat.velocity.x() - 0.2) < 1.0e-12);
-    xgc2_math::trajectory::HelixXyCurveEvaluator3 helix_xy(helix_params);
+    expect(std::fabs(flat.yaw) < 1.0e-12);
+    xgc2_math::trajectory::HelixXyCurveParameters3 helix_xy_params;
+    helix_xy_params.radius = 1.0;
+    helix_xy_params.omega = 0.8;
+    helix_xy_params.linear_scale = 5.0;
+    xgc2_math::trajectory::HelixXyCurveEvaluator3 helix_xy(helix_xy_params);
     expect(helix_xy.evaluate(0.0, flat));
     expect(std::fabs(flat.velocity.z() - 0.2) < 1.0e-12);
+    expect(std::fabs(flat.yaw) < 1.0e-12);
 
     xgc2_math::trajectory::TorusKnotCurveParameters3 torus_params;
     torus_params.omega = 0.6;
@@ -1180,6 +1204,15 @@ void testTrajectoryAndNmpcProblemContracts() {
     xgc2_math::trajectory::TorusKnotCurveEvaluator3 torus(torus_params);
     expect(torus.evaluate(0.0, flat));
     expect(flat.position.isApprox(Eigen::Vector3d(0.0, -0.4, 1.6), 1.0e-12));
+    expect(std::fabs(flat.yaw) < 1.0e-12);
+    expect(std::fabs(flat.yaw_rate) < 1.0e-12);
+
+    xgc2_math::trajectory::FigureEightCurveParameters3 figure_eight3_params;
+    figure_eight3_params.yaw = -0.2;
+    xgc2_math::trajectory::FigureEightCurveEvaluator3 figure_eight3(figure_eight3_params);
+    expect(figure_eight3.evaluate(0.5, flat));
+    expect(std::fabs(angle_error(flat.yaw, figure_eight3_params.yaw)) < 1.0e-12);
+    expect(std::fabs(flat.yaw_rate) < 1.0e-12);
 
     xgc2_math::control::Se3State se3_state;
     se3_state.position = Eigen::Vector3d(1.0, 2.0, 3.0);

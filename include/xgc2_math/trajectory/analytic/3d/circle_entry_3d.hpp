@@ -1,71 +1,12 @@
 #pragma once
 
-#include "xgc2_math/trajectory/analytic/circle.hpp"
+#include "xgc2_math/trajectory/analytic/3d/circle_3d.hpp"
 
 #include <Eigen/Dense>
 #include <algorithm>
 #include <cstdint>
 
 namespace xgc2_math::trajectory {
-
-struct CircleEntryCurveParameters2 {
-    uint32_t flags{kFlagNone};
-    double duration{60.0};
-    Eigen::Vector2d origin{Eigen::Vector2d::Zero()};
-    double origin_yaw{0.0};
-    double entry_duration{3.0};
-    CircleCurveParameters2 circle{};
-};
-
-class CircleEntryCurveEvaluator2 final : public TrajectoryEvaluator2 {
-  public:
-    explicit CircleEntryCurveEvaluator2(const CircleEntryCurveParameters2& params = {})
-        : params_(params), circle_(params_.circle) {
-        params_.entry_duration = std::max(0.0, params_.entry_duration);
-        if (!analytic_detail::finiteScalar(params_.duration) || params_.duration <= 0.0) {
-            params_.duration = circle_.duration() + params_.entry_duration;
-        }
-    }
-
-    bool evaluate(double t, PlanarReference2& output) const override {
-        if (!analytic_detail::finiteScalar(t)) {
-            output.flags |= kFlagInvalidInput;
-            return false;
-        }
-        t = analytic_detail::clamp(t, 0.0, params_.duration);
-        const double entry = std::max(analytic_detail::kMinDuration, params_.entry_duration);
-        output = PlanarReference2{};
-        if (t >= entry) {
-            const bool ok = circle_.evaluate(t - entry, output);
-            output.flags |= params_.flags;
-            return ok && TrajectoryValidator2::finite(output);
-        }
-
-        PlanarReference2 end;
-        circle_.evaluateCircle(0.0, end);
-        const auto cx = analytic_detail::septicBoundary(params_.origin.x(), 0.0, 0.0, 0.0, end.position.x(),
-                                                        end.velocity.x(), end.acceleration.x(), end.jerk.x(), entry);
-        const auto cy = analytic_detail::septicBoundary(params_.origin.y(), 0.0, 0.0, 0.0, end.position.y(),
-                                                        end.velocity.y(), end.acceleration.y(), end.jerk.y(), entry);
-        output.position << analytic_detail::polyValue(cx, t, 0), analytic_detail::polyValue(cy, t, 0);
-        output.velocity << analytic_detail::polyValue(cx, t, 1), analytic_detail::polyValue(cy, t, 1);
-        output.acceleration << analytic_detail::polyValue(cx, t, 2), analytic_detail::polyValue(cy, t, 2);
-        output.jerk << analytic_detail::polyValue(cx, t, 3), analytic_detail::polyValue(cy, t, 3);
-        output.yaw = params_.origin_yaw;
-        completePlanarReference2(output);
-        output.flags |= params_.flags;
-        return TrajectoryValidator2::finite(output);
-    }
-
-    double duration() const override { return params_.duration; }
-    TrajectoryModelType type() const override { return TrajectoryModelType::kAnalytic; }
-    uint32_t flags() const override { return params_.flags | circle_.flags(); }
-    const CircleEntryCurveParameters2& params() const { return params_; }
-
-  private:
-    CircleEntryCurveParameters2 params_;
-    CircleCurveEvaluator2 circle_;
-};
 
 struct CircleEntryCurveParameters3 {
     uint32_t flags{kFlagNone};
@@ -76,10 +17,17 @@ struct CircleEntryCurveParameters3 {
     CircleCurveParameters3 circle{};
 };
 
+inline CircleCurveParameters3 circle3dParametersWithYaw(const CircleCurveParameters3& circle, double yaw) {
+    CircleCurveParameters3 params = circle;
+    params.yaw = yaw;
+    return params;
+}
+
 class CircleEntryCurveEvaluator3 final : public TrajectoryEvaluator3 {
   public:
     explicit CircleEntryCurveEvaluator3(const CircleEntryCurveParameters3& params = {})
-        : params_(params), circle_(params_.circle) {
+        : params_(params), circle_(circle3dParametersWithYaw(params_.circle, params_.origin_yaw)) {
+        params_.circle.yaw = params_.origin_yaw;
         params_.entry_duration = std::max(0.0, params_.entry_duration);
         if (!analytic_detail::finiteScalar(params_.duration) || params_.duration <= 0.0) {
             params_.duration = circle_.duration() + params_.entry_duration;
@@ -115,10 +63,7 @@ class CircleEntryCurveEvaluator3 final : public TrajectoryEvaluator3 {
                                     output.jerk.y(), output.snap.y());
         analytic_detail::evalSeptic(cz, t, output.position.z(), output.velocity.z(), output.acceleration.z(),
                                     output.jerk.z(), output.snap.z());
-        analytic_detail::fillYawFromVelocity(output);
-        if (output.velocity.head<2>().squaredNorm() < 1.0e-8) {
-            output.yaw = params_.origin_yaw;
-        }
+        analytic_detail::fillYawHold(output, params_.origin_yaw);
         output.flags |= params_.flags;
         return TrajectoryValidator3::finite(output);
     }
