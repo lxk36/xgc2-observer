@@ -112,7 +112,7 @@ jobs:
         run: echo "Source tests run as part of the deb build smoke test for libxgc2-math-dev."
 
   deb-build-and-smoke:
-    needs: package-compliance
+    needs: release-guard
     runs-on: ubuntu-latest
     env:
       APT_REPO_HOST: ${{ secrets.APT_REPO_HOST }}
