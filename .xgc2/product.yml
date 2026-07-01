@@ -1,45 +1,52 @@
 schema: xgc2.product.v1
 id: libxgc2-math-dev
 name: XGC2 Math
-version: 0.5.5-1
+version: 0.5.5-2
 kind: toolchain-apt
-summary: Header-only C++ math library for XGC2 geometry, filters, observers, estimators, and control utilities.
-
+summary: Header-only C++ math library for XGC2 geometry, filters, observers, estimators,
+  and control utilities.
 apt:
   distribution: focal,jammy,noble
   install:
-    - libxgc2-math-dev
+  - libxgc2-math-dev
   packages:
-    - libxgc2-math-algebra-dev
-    - libxgc2-math-utils-dev
-    - libxgc2-math-geometry-dev
-    - libxgc2-math-filter-dev
-    - libxgc2-math-observer-dev
-    - libxgc2-math-estimation-dev
-    - libxgc2-math-optimization-dev
-    - libxgc2-math-trajectory-dev
-    - libxgc2-math-control-dev
-    - libxgc2-math-dev
+  - libxgc2-math-algebra-dev
+  - libxgc2-math-utils-dev
+  - libxgc2-math-geometry-dev
+  - libxgc2-math-filter-dev
+  - libxgc2-math-observer-dev
+  - libxgc2-math-estimation-dev
+  - libxgc2-math-optimization-dev
+  - libxgc2-math-trajectory-dev
+  - libxgc2-math-control-dev
+  - libxgc2-math-dev
   depends:
-    - libeigen3-dev
-    - libc6
-    - libgcc-s1
-    - libstdc++6
-
+  - libeigen3-dev
+  - libc6
+  - libgcc-s1
+  - libstdc++6
 usage:
-  install: |
-    sudo apt update
+  install: 'sudo apt update
+
     sudo apt install libxgc2-math-dev
-  smoke_test: |
-    cmake --find-package -DNAME=xgc2_math -DCOMPILER_ID=GNU -DLANGUAGE=CXX -DMODE=EXIST
-  notes: |
-    CMake consumers should use find_package(xgc2_math REQUIRED CONFIG)
+
+    '
+  smoke_test: 'cmake --find-package -DNAME=xgc2_math -DCOMPILER_ID=GNU -DLANGUAGE=CXX
+    -DMODE=EXIST
+
+    '
+  notes: 'CMake consumers should use find_package(xgc2_math REQUIRED CONFIG)
+
     and link xgc2_math::math or one of the component targets:
+
     xgc2_math::algebra, xgc2_math::utils, xgc2_math::geometry, xgc2_math::filter,
+
     xgc2_math::observer, xgc2_math::estimation, xgc2_math::optimization,
+
     xgc2_math::trajectory, xgc2_math::control.
 
+    '
 ownership:
   paths:
-    - /usr/include/xgc2_math
-    - /usr/lib/cmake/xgc2_math
+  - /usr/include/xgc2_math
+  - /usr/lib/cmake/xgc2_math
