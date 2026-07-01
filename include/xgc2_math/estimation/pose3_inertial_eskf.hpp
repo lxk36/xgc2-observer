@@ -72,6 +72,7 @@ struct RigidBodyState {
     Eigen::Vector3d velocity{Eigen::Vector3d::Zero()};
     Eigen::Quaterniond orientation{Eigen::Quaterniond::Identity()};
     Eigen::Vector3d angular_velocity{Eigen::Vector3d::Zero()};
+    Eigen::Vector3d linear_acceleration{Eigen::Vector3d::Zero()};
     Eigen::Vector3d gyro_bias{Eigen::Vector3d::Zero()};
     Eigen::Vector3d accel_bias{Eigen::Vector3d::Zero()};
     Eigen::Vector3d gravity{0.0, 0.0, -9.8066};
@@ -229,6 +230,9 @@ class Pose3InertialEskf {
             last_inertial_ = *inertial;
             last_inertial_.stamp_sec = pose.stamp_sec;
             state_.angular_velocity = last_inertial_.angular_velocity - state_.gyro_bias;
+            state_.linear_acceleration =
+                state_.orientation.toRotationMatrix() * (last_inertial_.linear_acceleration - state_.accel_bias) +
+                state_.gravity;
             has_last_inertial_ = true;
         }
         state_.covariance_trace = covariance_.trace();
@@ -556,6 +560,7 @@ class Pose3InertialEskf {
             normalizedQuaternion(old_orientation * expMap(0.5 * state_.angular_velocity * dt));
         const Eigen::Matrix3d rotation = mid_orientation.toRotationMatrix();
         const Eigen::Vector3d acceleration_world = rotation * accel_body + state_.gravity;
+        state_.linear_acceleration = acceleration_world;
         state_.position += state_.velocity * dt + 0.5 * acceleration_world * dt * dt;
         state_.velocity += acceleration_world * dt;
         state_.orientation = normalizedQuaternion(old_orientation * expMap(state_.angular_velocity * dt));

@@ -210,10 +210,10 @@ class MincoSe2TargetOptimizer {
             clamp(std::abs(start_.speed), positiveLimit(options_.min_boundary_speed, 0.15), max_velocity);
         head_pv_.setZero();
         tail_pv_.setZero();
-        head_pv_.col(0) << start_.position.x(), start_.position.y(), 0.0;
-        head_pv_.col(1) << start_speed * std::cos(start_.yaw), start_speed * std::sin(start_.yaw), 0.0;
-        tail_pv_.col(0) << motion_target_.x(), motion_target_.y(), 0.0;
-        tail_pv_.col(1) << tail_velocity_.x(), tail_velocity_.y(), 0.0;
+        head_pv_.col(0) = Eigen::Vector3d(start_.position.x(), start_.position.y(), 0.0);
+        head_pv_.col(1) = Eigen::Vector3d(start_speed * std::cos(start_.yaw), start_speed * std::sin(start_.yaw), 0.0);
+        tail_pv_.col(0) = Eigen::Vector3d(motion_target_.x(), motion_target_.y(), 0.0);
+        tail_pv_.col(1) = Eigen::Vector3d(tail_velocity_.x(), tail_velocity_.y(), 0.0);
         minco_.setConditions(head_pv_, tail_pv_, piece_count_);
     }
 
@@ -280,7 +280,7 @@ class MincoSe2TargetOptimizer {
         points.resize(3, std::max(0, piece_count_ - 1));
         for (int i = 1; i < piece_count_; ++i) {
             const int offset = piece_count_ + 2 * (i - 1);
-            points.col(i - 1) << x(offset), x(offset + 1), 0.0;
+            points.col(i - 1) = Eigen::Vector3d(x(offset), x(offset + 1), 0.0);
         }
         return points.array().isFinite().all() && times.array().isFinite().all();
     }
