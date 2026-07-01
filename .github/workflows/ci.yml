@@ -59,12 +59,6 @@ jobs:
   deb-build-and-smoke:
     needs: package-compliance
     runs-on: ubuntu-latest
-    env:
-      APT_REPO_HOST: ${{ secrets.APT_REPO_HOST }}
-      APT_REPO_PORT: ${{ secrets.APT_REPO_PORT }}
-      APT_REPO_USER: ${{ secrets.APT_REPO_USER }}
-      APT_REPO_SSH_KEY: ${{ secrets.APT_REPO_SSH_KEY }}
-      APT_REPO_KNOWN_HOSTS: ${{ secrets.APT_REPO_KNOWN_HOSTS }}
     defaults:
       run:
         shell: bash
@@ -105,21 +99,3 @@ jobs:
         with:
           name: libxgc2-math-dev-all
           path: .ci/debs/*.deb
-
-      - name: Publish focal APT package
-        if: ${{ github.event_name != 'pull_request' && env.APT_REPO_HOST != '' && env.APT_REPO_PORT != '' && env.APT_REPO_SSH_KEY != '' && env.APT_REPO_KNOWN_HOSTS != '' }}
-        env:
-          APT_REPO_DISTRIBUTION: focal
-        run: ./.xgc2/scripts/publish_self_hosted_apt.sh --deb-dir .ci/debs
-
-      - name: Publish jammy APT package
-        if: ${{ github.event_name != 'pull_request' && env.APT_REPO_HOST != '' && env.APT_REPO_PORT != '' && env.APT_REPO_SSH_KEY != '' && env.APT_REPO_KNOWN_HOSTS != '' }}
-        env:
-          APT_REPO_DISTRIBUTION: jammy
-        run: ./.xgc2/scripts/publish_self_hosted_apt.sh --deb-dir .ci/debs
-
-      - name: Publish noble APT package
-        if: ${{ github.event_name != 'pull_request' && env.APT_REPO_HOST != '' && env.APT_REPO_PORT != '' && env.APT_REPO_SSH_KEY != '' && env.APT_REPO_KNOWN_HOSTS != '' }}
-        env:
-          APT_REPO_DISTRIBUTION: noble
-        run: ./.xgc2/scripts/publish_self_hosted_apt.sh --deb-dir .ci/debs

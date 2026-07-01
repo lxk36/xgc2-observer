@@ -1,0 +1,180 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_version:
+        description: Expected .xgc2/product.yml version
+        required: true
+        type: string
+      expected_source_sha:
+        description: Expected source commit SHA
+        required: true
+        type: string
+      publish_apt:
+        description: Publish debs to the APT repository
+        required: true
+        type: boolean
+        default: false
+      run_cpp_quality:
+        description: Run C++ quality checks
+        required: true
+        type: boolean
+        default: true
+      run_source_tests:
+        description: Run source tests
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  release-guard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate release inputs
+        run: |
+          set -euo pipefail
+          product_version="$(awk -F': *' '/^version:[[:space:]]*/ {print $2; exit}' .xgc2/product.yml)"
+          if [[ "${product_version}" != "${{ inputs.expected_version }}" ]]; then
+            echo "product.yml version ${product_version} != expected_version ${{ inputs.expected_version }}" >&2
+            exit 1
+          fi
+          source_sha="$(git rev-parse HEAD)"
+          if [[ "${source_sha}" != "${{ inputs.expected_source_sha }}" ]]; then
+            echo "HEAD ${source_sha} != expected_source_sha ${{ inputs.expected_source_sha }}" >&2
+            exit 1
+          fi
+
+  cpp-quality:
+    if: ${{ inputs.run_cpp_quality }}
+    needs: release-guard
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install C++ quality tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+                build-essential \
+                clang-format \
+                clang-tidy \
+                cmake \
+                cppcheck \
+                libeigen3-dev \
+                libgtest-dev
+
+      - name: Run C++ quality gate
+        run: |
+          set -euo pipefail
+          cd "${GITHUB_WORKSPACE}"
+          ./.xgc2/scripts/check_cpp_quality.sh
+
+  package-compliance:
+    needs: release-guard
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check whitespace
+        run: git -C "${GITHUB_WORKSPACE}" diff --check HEAD
+
+      - name: Package compliance
+        run: |
+          set -euo pipefail
+          cd "${GITHUB_WORKSPACE}"
+          ./.xgc2/scripts/check_package_compliance.sh
+
+  source-tests:
+    if: ${{ inputs.run_source_tests }}
+    needs: release-guard
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: No standalone source tests configured
+        run: echo "Source tests run as part of the deb build smoke test for libxgc2-math-dev."
+
+  deb-build-and-smoke:
+    needs: package-compliance
+    runs-on: ubuntu-latest
+    env:
+      APT_REPO_HOST: ${{ secrets.APT_REPO_HOST }}
+      APT_REPO_PORT: ${{ secrets.APT_REPO_PORT }}
+      APT_REPO_USER: ${{ secrets.APT_REPO_USER }}
+      APT_REPO_SSH_KEY: ${{ secrets.APT_REPO_SSH_KEY }}
+      APT_REPO_KNOWN_HOSTS: ${{ secrets.APT_REPO_KNOWN_HOSTS }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build deb and run installed smoke test
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            -w /work \
+            ubuntu:20.04 \
+            bash -lc '
+              set -euo pipefail
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                build-essential \
+                ca-certificates \
+                cmake \
+                dpkg-dev \
+                fakeroot \
+                file \
+                git \
+                libeigen3-dev \
+                libgtest-dev
+              git config --global --add safe.directory /work
+              ./.xgc2/scripts/check_package_compliance.sh
+              ./.xgc2/scripts/build_deb.sh
+              apt-get install -y ./.ci/debs/*.deb
+              ./.xgc2/scripts/smoke_test_installed.sh
+            '
+
+      - name: Upload deb artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: libxgc2-math-dev-all
+          path: .ci/debs/*.deb
+
+      - name: Publish focal APT package
+        if: ${{ inputs.publish_apt && env.APT_REPO_HOST != '' && env.APT_REPO_PORT != '' && env.APT_REPO_SSH_KEY != '' && env.APT_REPO_KNOWN_HOSTS != '' }}
+        env:
+          APT_REPO_DISTRIBUTION: focal
+        run: ./.xgc2/scripts/publish_self_hosted_apt.sh --deb-dir .ci/debs
+
+      - name: Publish jammy APT package
+        if: ${{ inputs.publish_apt && env.APT_REPO_HOST != '' && env.APT_REPO_PORT != '' && env.APT_REPO_SSH_KEY != '' && env.APT_REPO_KNOWN_HOSTS != '' }}
+        env:
+          APT_REPO_DISTRIBUTION: jammy
+        run: ./.xgc2/scripts/publish_self_hosted_apt.sh --deb-dir .ci/debs
+
+      - name: Publish noble APT package
+        if: ${{ inputs.publish_apt && env.APT_REPO_HOST != '' && env.APT_REPO_PORT != '' && env.APT_REPO_SSH_KEY != '' && env.APT_REPO_KNOWN_HOSTS != '' }}
+        env:
+          APT_REPO_DISTRIBUTION: noble
+        run: ./.xgc2/scripts/publish_self_hosted_apt.sh --deb-dir .ci/debs
